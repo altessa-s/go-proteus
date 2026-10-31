@@ -17,6 +17,8 @@ paths = [
     # Claude Code tooling artifacts: kept out of the tree, may contain
     # documentation examples.
     '''\.claude/.*''',
+    # Synthetic signing key used by the signing fuzz test.
+    '''^signing/signing_fuzz_test\.go$''',
     # Synthetic signing keys generated for tests.
     '''^testdata/keys/[^/]+\.pem$''',
 ]
