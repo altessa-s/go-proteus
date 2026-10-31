@@ -8,6 +8,7 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
+	"sync"
 
 	"github.com/altessa-s/go-proteus"
 	"github.com/altessa-s/go-proteus/sdk"
@@ -415,9 +416,7 @@ func (m *Manager) finalizeAdmission(
 	start := m.now()
 	release, contentFailure, initErr := acquireImage(ctx, m.initTimeout, opened, func() error {
 		return runWatchdog(ctx, m.initTimeout, desc.Name, sdk.SymbolInit, proteus.ErrInitFailed, m.logger, resolved.initFn)
-	}, func(closeCtx context.Context) error {
-		return runWatchdog(closeCtx, m.closeTimeout, desc.Name, sdk.SymbolClose, nil, m.logger, resolved.closeFn)
-	})
+	}, resolved.closeFn)
 	initDuration := m.now().Sub(start)
 
 	m.observer.Initialized(proteus.InitEvent{
@@ -454,9 +453,17 @@ func (m *Manager) finalizeAdmission(
 		}
 	}
 	delete(m.failed, desc.Name)
+	probes := new(sync.WaitGroup)
 	m.ready[desc.Name] = readyPlugin{
-		plugin:   plugin,
-		release:  release,
+		plugin: plugin,
+		probes: probes,
+		release: func(closeCtx context.Context) error {
+			return runWatchdog(closeCtx, m.closeTimeout, desc.Name, sdk.SymbolClose, nil, m.logger, func(ctx context.Context) error {
+				// A timed-out health worker still owns plugin resources until it exits.
+				probes.Wait()
+				return release(ctx)
+			})
+		},
 		setState: setState,
 		healthFn: resolved.healthFn,
 	}

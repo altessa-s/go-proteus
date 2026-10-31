@@ -5,6 +5,7 @@
 package signature
 
 import (
+	"bytes"
 	"crypto"
 	"crypto/ecdsa"
 	"crypto/ed25519"
@@ -118,19 +119,37 @@ func ParsePublicKeyPEM(pemBytes []byte) (Key, error) {
 	return keys[0], nil
 }
 
-// ParsePublicKeysPEM parses one or more concatenated PEM-encoded PKIX PUBLIC KEY blocks.
+// ParsePublicKeysPEM parses one or more PEM-encoded PKIX PUBLIC KEY blocks.
+// Only ASCII space, tab, CR and LF are permitted before, between, or after blocks.
 func ParsePublicKeysPEM(pemBytes []byte) ([]Key, error) {
 	rest := pemBytes
 	var keys []Key
 	for {
-		var block *pem.Block
-		block, rest = pem.Decode(rest)
-		if block == nil {
+		// Only ASCII space, tab, CR and LF may separate trust anchors.
+		rest = bytes.TrimLeft(rest, " \t\r\n")
+		if len(rest) == 0 {
 			break
 		}
-		if block.Type != "PUBLIC KEY" {
-			return nil, fmt.Errorf("%w: unexpected PEM block type %q (expected PUBLIC KEY)", ErrKeyPolicy, block.Type)
+		const begin = "-----BEGIN PUBLIC KEY-----"
+		const end = "-----END PUBLIC KEY-----"
+		if !bytes.HasPrefix(rest, []byte(begin)) {
+			return nil, fmt.Errorf("%w: expected PUBLIC KEY block", ErrKeyPolicy)
 		}
+		endIndex := bytes.Index(rest, []byte(end))
+		if endIndex < 0 {
+			return nil, fmt.Errorf("%w: incomplete PUBLIC KEY block", ErrKeyPolicy)
+		}
+		endIndex += len(end)
+		encoded := rest[:endIndex]
+		// Decode only the first block: pem.Decode otherwise skips malformed blocks.
+		if bytes.Contains(encoded[len(begin):], []byte("-----BEGIN")) {
+			return nil, fmt.Errorf("%w: nested PEM block", ErrKeyPolicy)
+		}
+		block, remainder := pem.Decode(encoded)
+		if block == nil || len(remainder) != 0 {
+			return nil, fmt.Errorf("%w: malformed PUBLIC KEY block", ErrKeyPolicy)
+		}
+		rest = rest[endIndex:]
 		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 		if err != nil {
 			return nil, fmt.Errorf("%w: parse PKIX public key: %w", ErrKeyPolicy, err)

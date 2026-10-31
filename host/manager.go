@@ -24,6 +24,7 @@ import (
 )
 
 type readyPlugin struct {
+	probes   *sync.WaitGroup
 	plugin   *proteus.Plugin
 	healthFn lifecycleHook
 	release  func(context.Context) error
@@ -243,6 +244,7 @@ func (m *Manager) Unload(ctx context.Context, name string) error {
 		return fmt.Errorf("%w: %s", proteus.ErrNotFound, name)
 	}
 	delete(m.ready, name)
+	entry.setState(proteus.StateUnloaded, nil)
 	hash := entry.plugin.SHA256()
 	delete(m.loadedHashes, hash)
 	if proteus.IsValidSHA256Hex(hash) {
@@ -270,6 +272,7 @@ func (m *Manager) Close(ctx context.Context) error {
 	m.closed = true
 	entries := make([]readyPlugin, 0, len(m.ready))
 	for _, entry := range m.ready {
+		entry.setState(proteus.StateUnloaded, nil)
 		entries = append(entries, entry)
 	}
 	clear(m.ready)
@@ -396,14 +399,26 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 	for _, entry := range readyList {
 		p := entry.plugin
 		var probeErr error
-		if entry.healthFn != nil {
-			probeErr = runWatchdog(ctx, m.healthTimeout, p.Name(), "HealthCheck", nil, m.logger, entry.healthFn)
+		// Admission to a probe and removal from the registry are mutually exclusive.
+		m.mu.RLock()
+		current, active := m.ready[p.Name()]
+		active = active && current.plugin == p
+		if active && entry.healthFn != nil {
+			entry.probes.Add(1)
 		}
-		if probeErr != nil {
+		m.mu.RUnlock()
+		if active && entry.healthFn != nil {
+			probeErr = runWatchdog(ctx, m.healthTimeout, p.Name(), "HealthCheck", nil, m.logger, func(ctx context.Context) error {
+				defer entry.probes.Done()
+				return entry.healthFn(ctx)
+			})
+		}
+		state := p.State()
+		if probeErr != nil || state != proteus.StateReady {
 			failedCount++
 			plugins = append(plugins, proteus.PluginHealth{
 				Name:   p.Name(),
-				State:  p.State(),
+				State:  state,
 				Status: proteus.StatusNotServing,
 				Err:    probeErr,
 			})
@@ -411,7 +426,7 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 			readyCount++
 			plugins = append(plugins, proteus.PluginHealth{
 				Name:   p.Name(),
-				State:  proteus.StateReady,
+				State:  state,
 				Status: proteus.StatusServing,
 			})
 		}

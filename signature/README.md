@@ -31,3 +31,6 @@ verified, err := verifier.Verify(ctx, sigEnvelopeBytes)
 ```
 
 Keys copy public material on ingestion and access; callers cannot mutate verification state through `PublicKey()`, `Lookup()`, or `Keys()`.
+
+PEM trust bundles must be consumed completely: only PUBLIC KEY blocks and ASCII space, tab, CR, and LF separators are accepted.
+Malformed blocks or other text anywhere in a bundle fail with ErrKeyPolicy; neither parsing API returns a partial trust set.

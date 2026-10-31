@@ -19,9 +19,10 @@ var images = struct {
 }{entries: make(map[string]*imageEntry)}
 
 type imageEntry struct {
-	done    chan struct{}
-	refs    int
-	err     error
+	done chan struct{}
+	refs int
+	err  error
+	// Store only the hook; each releasing manager supplies its own watchdog.
 	closeFn func(context.Context) error
 }
 
@@ -33,7 +34,7 @@ func acquireImage(
 		if err = initialize(); err != nil {
 			return nil, true, err
 		}
-		return closeFn, false, nil
+		return (&imageEntry{closeFn: closeFn, refs: 1}).release, false, nil
 	}
 	images.Lock()
 	if entry, ok := images.entries[opened.SHA256]; ok {
@@ -82,7 +83,7 @@ func (e *imageEntry) release(ctx context.Context) error {
 	e.refs--
 	last := e.refs == 0
 	images.Unlock()
-	if last {
+	if last && e.closeFn != nil {
 		return e.closeFn(ctx)
 	}
 	return nil

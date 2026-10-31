@@ -36,3 +36,8 @@ terminal mapped image. Admission failures without a trustworthy name use `source
 Failures remain diagnostic records until a successful admission replaces that source (or name).
 Temporary storage failures appear in `Failed()` and health but do not quarantine the signed digest.
 Minimum versions use semantic-version prerelease precedence; build metadata has no precedence.
+
+Health probes acquire a manager-owned operation lease before invoking plugin code. Removal prevents new probes, and shutdown waits for
+all admitted workers to exit, including workers abandoned by the health watchdog. The releasing manager's close timeout bounds this wait
+and the final Close hook. On timeout, cleanup continues after the workers exit; resources remain alive if a worker never returns.
+Health results reflect lifecycle state after probing, so removed plugins are not reported as ready.

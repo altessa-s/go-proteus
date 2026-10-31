@@ -7,3 +7,5 @@ github.com/spf13/pflag
 github.com/youmark/pkcs8
 golang.org/x/crypto
 golang.org/x/sys
+github.com/stretchr/testify
+go.yaml.in/yaml/v3
