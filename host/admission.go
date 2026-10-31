@@ -72,6 +72,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 
 	// Skip if this exact content hash is already loaded or was explicitly unloaded in this process (Defect 10).
 	if m.isHashLoadedOrUnloaded(hash) {
+		m.clearActiveSourceFailure(cand.ID, hash)
 		skipErr := fmt.Errorf("%w: %s (%s)", proteus.ErrAlreadyLoaded, name, hash)
 		report.Skipped = append(report.Skipped, proteus.CandidateReport{
 			Source: cand.ID,
@@ -290,6 +291,7 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 	hash := opened.SHA256
 
 	if m.isHashLoadedOrUnloaded(hash) {
+		m.clearActiveSourceFailure(cand.ID, hash)
 		skipErr := fmt.Errorf("%w: %s (%s)", proteus.ErrAlreadyLoaded, cand.ID, hash)
 		report.Skipped = append(report.Skipped, proteus.CandidateReport{
 			Source:   cand.ID,

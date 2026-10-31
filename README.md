@@ -101,7 +101,7 @@ of `main()` using `github.com/altessa-s/go-atlas-core` before starting worker go
 2. `rlimits.Apply(...)` (`github.com/altessa-s/go-atlas-core/runtime/rlimits`) — bound core dumps, open file descriptors, and address space.
 3. `seccomp.BlockDangerousSyscalls()` (`github.com/altessa-s/go-atlas-core/runtime/seccomp`) — install the seccomp-bpf filter on Linux.
 
-See [ADR 0005](docs/adr/0005-process-hardening-at-startup.md) for rationale.
+In-process plugins share the host address space; process hardening belongs to service startup and does not isolate plugins.
 
 ## CLI (`cmd/proteus`)
 

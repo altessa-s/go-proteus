@@ -200,17 +200,15 @@ func runWatchdog(
 		returned := false
 		defer func() {
 			if r := recover(); r != nil {
-				stack := debug.Stack()
 				logger.Error("plugin hook panicked",
 					slog.String("plugin", pluginName),
 					slog.String("hook", hookName),
-					slog.Any("panic", r),
-					slog.String("stack", string(stack)),
+					slog.String("panic_type", fmt.Sprintf("%T", r)),
 				)
 				if sentinel != nil {
-					err = fmt.Errorf("%w: %w: plugin %q %s panicked: %v", sentinel, proteus.ErrPanicked, pluginName, hookName, r)
+					err = fmt.Errorf("%w: %w: plugin %q %s panicked (%T)", sentinel, proteus.ErrPanicked, pluginName, hookName, r)
 				} else {
-					err = fmt.Errorf("%w: plugin %q %s panicked: %v", proteus.ErrPanicked, pluginName, hookName, r)
+					err = fmt.Errorf("%w: plugin %q %s panicked (%T)", proteus.ErrPanicked, pluginName, hookName, r)
 				}
 			} else if !returned {
 				err = fmt.Errorf("%w: plugin %q %s exited without returning", proteus.ErrHookExited, pluginName, hookName)

@@ -5,12 +5,14 @@
 package watch_test
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
@@ -223,4 +225,32 @@ func TestWatcherFsnotifyErrorRecordingAndLifecycle(t *testing.T) {
 	if err := w2.Stop(); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func TestWatcherPanicPrivacy(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	synctest.Test(t, func(t *testing.T) {
+		const canary = "private-watcher-canary"
+		var logs bytes.Buffer
+		w, err := watch.New(dir, funcReloader(func(context.Context) (proteus.LoadReport, error) { panic(canary) }), watch.WithDisableFsnotify(), watch.WithLogger(slog.New(slog.NewTextHandler(&logs, nil))))
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := w.Start(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+		w.Notify("p.so")
+		time.Sleep(time.Second)
+		synctest.Wait()
+		if err := w.Stop(); err != nil {
+			t.Fatal(err)
+		}
+		if !errors.Is(w.LastErr(), proteus.ErrPanicked) {
+			t.Fatalf("unexpected error: %v", w.LastErr())
+		}
+		if strings.Contains(w.LastErr().Error(), canary) || strings.Contains(logs.String(), canary) {
+			t.Fatal("panic payload leaked")
+		}
+	})
 }

@@ -14,3 +14,5 @@ proteus sign --key signing.key --name greeter --version 1.2.0 ./greeter.so
 proteus verify --key signing.pub ./greeter.so
 proteus inspect ./greeter.so.sig
 ```
+
+Signature, key, and password file reads are bounded by `signature.DefaultMaxEnvelopeBytes`. Binary artifacts are hashed as streams.

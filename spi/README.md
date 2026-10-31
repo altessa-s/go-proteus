@@ -19,3 +19,5 @@ for greeter, p := range spi.Providers[Greeter](mgr, "Greeter", spi.WithMajor(1),
 
 Providers accept direct symbols and dereference one exported-variable pointer, including `var Greeter = &greeterImpl{}`.
 Nil interfaces and typed nil provider values are skipped with `proteus.ErrInvalidSymbol`.
+
+`Guard` errors report the panic type without its value. An explicitly configured `WithOnPanic` callback receives the raw value and stack; callers control how that sensitive diagnostic data is handled.

@@ -17,7 +17,6 @@ import (
 
 	"github.com/altessa-s/go-atlas-core/encoding/hash"
 	"github.com/altessa-s/go-atlas-core/io/files"
-	"github.com/altessa-s/go-atlas-core/runtime/panics"
 
 	"github.com/altessa-s/go-proteus"
 
@@ -215,14 +214,15 @@ func rehashSnapshotFile(path string, maxBytes int64) (string, int64, error) {
 	return hasher.SumHex(), n, nil
 }
 
-// invokeOpenSafe wraps openFn in [panics.HandleWithOpts] so any panic raised by a plugin's package
-// init() during plugin.Open is recovered and returned as [proteus.ErrPanicked] (Defect 1).
+// invokeOpenSafe contains package initializer panics without exposing their payloads
+// to errors or process-wide panic handlers.
 func invokeOpenSafe(ctx context.Context, path string, openFn OpenFunc) (syms proteus.Symbols, err error) {
-	opts := panics.NewHandleOpts().SetReallyPanic(false)
-	defer panics.HandleWithOpts(ctx, opts, func(_ context.Context, r any) {
-		syms = nil
-		err = fmt.Errorf("%w: plugin package init panicked during open: %v", proteus.ErrPanicked, r)
-	})
+	defer func() {
+		if r := recover(); r != nil {
+			syms = nil
+			err = fmt.Errorf("%w: plugin package init panicked during open (%T)", proteus.ErrPanicked, r)
+		}
+	}()
 	return openFn(ctx, path)
 }
 

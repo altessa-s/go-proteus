@@ -214,6 +214,10 @@ func TestGuard(t *testing.T) {
 	if !errors.Is(err, proteus.ErrPanicked) {
 		t.Fatalf("expected ErrPanicked, got %v", err)
 	}
+	if strings.Contains(err.Error(), "kaboom") {
+		t.Fatal("panic payload leaked")
+	}
+
 	if gotPlugin != "p-panic" || gotRecovered != "kaboom" || len(gotStack) == 0 {
 		t.Fatalf("unexpected onPanic callback args: plugin=%q recovered=%v stackLen=%d", gotPlugin, gotRecovered, len(gotStack))
 	}

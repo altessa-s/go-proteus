@@ -523,3 +523,20 @@ func (m *Manager) statsLocked() proteus.Stats {
 		Quarantined: m.quarantine.len(),
 	}
 }
+
+// clearActiveSourceFailure clears a repaired admission failure only when the
+// candidate still identifies this manager's active image. Unloaded and failed
+// images must retain their diagnostic state.
+func (m *Manager) clearActiveSourceFailure(source, hash string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	name, loaded := m.loadedHashes[hash]
+	if !loaded || m.ready[name].plugin.Source() != source {
+		return
+	}
+	for key, failed := range m.failed {
+		if failed.Source() == source {
+			delete(m.failed, key)
+		}
+	}
+}

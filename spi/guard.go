@@ -28,7 +28,7 @@ func Guard(ctx context.Context, pluginName string, fn func(context.Context) erro
 			if cfg.onPanic != nil {
 				cfg.onPanic(pluginName, r, stack)
 			}
-			err = fmt.Errorf("%w: plugin %q panicked: %v", proteus.ErrPanicked, pluginName, r)
+			err = fmt.Errorf("%w: plugin %q panicked (%T)", proteus.ErrPanicked, pluginName, r)
 		}
 	}()
 	return fn(ctx)

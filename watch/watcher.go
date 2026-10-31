@@ -19,8 +19,6 @@ import (
 
 	"github.com/fsnotify/fsnotify"
 
-	"github.com/altessa-s/go-atlas-core/runtime/panics"
-
 	"github.com/altessa-s/go-proteus"
 )
 
@@ -275,10 +273,11 @@ func (w *Watcher) executeReload(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
-	opts := panics.NewHandleOpts().SetReallyPanic(false)
-	defer panics.HandleWithOpts(ctx, opts, func(_ context.Context, r any) {
-		w.recordError(fmt.Errorf("%w: reloader panicked: %v", proteus.ErrPanicked, r))
-	})
+	defer func() {
+		if r := recover(); r != nil {
+			w.recordError(fmt.Errorf("%w: reloader panicked (%T)", proteus.ErrPanicked, r))
+		}
+	}()
 
 	report, err := w.reloader.Reload(ctx)
 	if err != nil {

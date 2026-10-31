@@ -5,11 +5,13 @@
 package main
 
 import (
-	"io"
-
 	"github.com/spf13/cobra"
 
 	"github.com/altessa-s/go-atlas-core/io/files"
+
+	"github.com/altessa-s/go-proteus/signature"
+
+	coreio "github.com/altessa-s/go-atlas-core/io"
 )
 
 const outputPerm = 0o600
@@ -20,7 +22,8 @@ func readRegularFile(path string) ([]byte, error) {
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
-	return io.ReadAll(f)
+	// Metadata inputs share the verifier envelope limit; artifacts are streamed separately.
+	return coreio.ReadAllLimited(f, signature.DefaultMaxEnvelopeBytes)
 }
 
 func newRootCmd() *cobra.Command {

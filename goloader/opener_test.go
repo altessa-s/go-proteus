@@ -339,3 +339,16 @@ func TestPackageInitGoexitContainedAndCached(t *testing.T) {
 	require.NoError(t, err)
 	require.Empty(t, entries)
 }
+
+func TestLoaderPanicPrivacy(t *testing.T) {
+	t.Parallel()
+	const canary = "private-loader-canary"
+	opener, err := goloader.New(t.TempDir(), goloader.WithOpenFunc(func(context.Context, string) (proteus.Symbols, error) { panic(canary) }))
+	require.NoError(t, err)
+	cand, digest := makeCandidate("p.so", []byte(t.Name()))
+	for range 2 {
+		_, err := opener.Open(t.Context(), cand, digest, 0)
+		require.ErrorIs(t, err, proteus.ErrPanicked)
+		require.NotContains(t, err.Error(), canary)
+	}
+}
