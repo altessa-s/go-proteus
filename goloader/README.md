@@ -15,7 +15,9 @@ Package `goloader` implements `proteus.Opener` over the Go standard library `plu
   distinct snapshot paths.
 
 All real openers share one process-wide cache by digest, including terminal package-init failures.
-Injected `WithOpenFunc` loaders have isolated caches. Both the signed digest and positive signed size
+The registry lock only reserves and publishes per-digest entries; package initializers run outside it.
+Different digests can open concurrently (including nested opens), and same-digest waiters can cancel
+without changing the shared result. Injected `WithOpenFunc` loaders have isolated caches. Both the signed digest and positive signed size
 are checked before the low-level loader executes. Temporary snapshot/storage failures are retryable;
 `Opened.ContentFailure` identifies terminal loader failures attributable to verified bytes.
 Snapshots are unlinked after the loader returns on success or failure; cached handles remain mapped.

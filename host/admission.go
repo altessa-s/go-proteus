@@ -413,7 +413,7 @@ func (m *Manager) finalizeAdmission(
 	})
 
 	start := m.now()
-	release, initErr := acquireImage(ctx, opened, func() error {
+	release, contentFailure, initErr := acquireImage(ctx, m.initTimeout, opened, func() error {
 		return runWatchdog(ctx, m.initTimeout, desc.Name, sdk.SymbolInit, proteus.ErrInitFailed, m.logger, resolved.initFn)
 	}, func(closeCtx context.Context) error {
 		return runWatchdog(closeCtx, m.closeTimeout, desc.Name, sdk.SymbolClose, nil, m.logger, resolved.closeFn)
@@ -430,8 +430,10 @@ func (m *Manager) finalizeAdmission(
 	now := m.now().UTC()
 	if initErr != nil {
 		m.recordFailedPlugin(desc, manifest, sourceID, hash, initErr)
-		if qEntry, added := m.quarantine.add(sourceID, hash, initErr, now); added {
-			m.observer.Quarantined(qEntry)
+		if contentFailure {
+			if qEntry, added := m.quarantine.add(sourceID, hash, initErr, now); added {
+				m.observer.Quarantined(qEntry)
+			}
 		}
 		report.Failed = append(report.Failed, proteus.CandidateReport{
 			Source:   sourceID,

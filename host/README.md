@@ -20,7 +20,10 @@ plugins.
 For `Opened.Mapped` images, managers acquire process-wide references keyed by digest. `Init` runs once;
 `Close` runs when the last owner releases. A failed Init or last release is terminal for that image.
 A new manager cannot initialize it again and receives an `ErrAlreadyLoaded`-style admission failure
-after unload. Non-mapped test loaders retain isolated lifecycle behavior.
+after unload. Each waiting manager applies its own `WithInitTimeout` and caller context to shared
+initialization. Abandoning that wait reports cancellation or timeout without quarantining the digest
+or canceling the owning manager’s Init; the waiter can retry while the owner retains the image.
+Non-mapped test loaders retain isolated lifecycle behavior.
 
 Discovery and admission are serialized separately from registry reads. Observers and Init hooks may
 call `Get`, `All`, and `Failed`; callbacks must not synchronously initiate another Load, Close, Unload,

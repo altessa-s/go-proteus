@@ -7,6 +7,7 @@ package host
 import (
 	"context"
 	"sync"
+	"time"
 
 	"github.com/altessa-s/go-proteus"
 )
@@ -24,38 +25,45 @@ type imageEntry struct {
 	closeFn func(context.Context) error
 }
 
+// acquireImage distinguishes terminal image failures from callers abandoning a shared wait.
 func acquireImage(
-	ctx context.Context, opened proteus.Opened, initialize func() error, closeFn func(context.Context) error,
-) (func(context.Context) error, error) {
+	ctx context.Context, timeout time.Duration, opened proteus.Opened, initialize func() error, closeFn func(context.Context) error,
+) (release func(context.Context) error, contentFailure bool, err error) {
 	if !opened.Mapped {
-		if err := initialize(); err != nil {
-			return nil, err
+		if err = initialize(); err != nil {
+			return nil, true, err
 		}
-		return closeFn, nil
+		return closeFn, false, nil
 	}
 	images.Lock()
 	if entry, ok := images.entries[opened.SHA256]; ok {
 		images.Unlock()
+		waitCtx := ctx
+		if timeout > 0 {
+			var cancel context.CancelFunc
+			waitCtx, cancel = context.WithTimeout(ctx, timeout)
+			defer cancel()
+		}
 		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
+		case <-waitCtx.Done():
+			return nil, false, waitCtx.Err()
 		case <-entry.done:
 		}
 		images.Lock()
 		defer images.Unlock()
 		if entry.err != nil {
-			return nil, entry.err
+			return nil, true, entry.err
 		}
 		if entry.refs == 0 {
-			return nil, proteus.ErrAlreadyLoaded
+			return nil, true, proteus.ErrAlreadyLoaded
 		}
 		entry.refs++
-		return entry.release, nil
+		return entry.release, false, nil
 	}
 	entry := &imageEntry{done: make(chan struct{}), closeFn: closeFn}
 	images.entries[opened.SHA256] = entry
 	images.Unlock()
-	err := initialize()
+	err = initialize()
 	images.Lock()
 	entry.err = err
 	if err == nil {
@@ -64,9 +72,9 @@ func acquireImage(
 	close(entry.done)
 	images.Unlock()
 	if err != nil {
-		return nil, err
+		return nil, true, err
 	}
-	return entry.release, nil
+	return entry.release, false, nil
 }
 
 func (e *imageEntry) release(ctx context.Context) error {

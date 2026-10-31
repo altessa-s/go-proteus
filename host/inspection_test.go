@@ -12,6 +12,7 @@ import (
 	"sync/atomic"
 	"testing"
 	"testing/synctest"
+	"time"
 
 	"github.com/altessa-s/go-proteus"
 	"github.com/altessa-s/go-proteus/host"
@@ -270,6 +271,72 @@ func TestConcurrentMappedInitAndTerminalFailure(t *testing.T) {
 					if err != nil || !errors.Is(r.Err(), proteus.ErrInitFailed) || calls.Load() != 1 {
 						t.Fatalf("failed image retried: %+v %v", r, err)
 					}
+				}
+			})
+		})
+	}
+}
+
+func TestSharedInitWaitAbandonment(t *testing.T) {
+	t.Parallel()
+	for _, canceled := range []bool{false, true} {
+		t.Run(fmt.Sprint(canceled), func(t *testing.T) {
+			synctest.Test(t, func(t *testing.T) {
+				src := &memSource{candidates: []proteus.Candidate{{ID: "shared"}}}
+				opener := newFakeOpener()
+				unblock := make(chan struct{})
+				var calls atomic.Int32
+				opener.results["shared"] = func(proteus.Candidate, string) (proteus.Opened, error) {
+					return proteus.Opened{Mapped: true, SHA256: hashOf(t.Name()), Symbols: memSymbols{
+						sdk.SymbolDescriptor: sdk.Descriptor{Name: "shared", Version: "1.0.0"},
+						sdk.SymbolInit:       func(context.Context) error { calls.Add(1); <-unblock; return nil },
+					}}, nil
+				}
+				create := func(timeout time.Duration) *host.Manager {
+					m, err := host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow), host.WithInitTimeout(timeout))
+					if err != nil {
+						t.Fatal(err)
+					}
+					return m
+				}
+				owner, waiter := create(time.Hour), create(50*time.Millisecond)
+				ownerReport := make(chan proteus.LoadReport, 1)
+				go func() { r, _ := owner.Load(t.Context()); ownerReport <- r }()
+				synctest.Wait()
+				ctx, cancel := context.WithCancel(t.Context())
+				defer cancel()
+				result := make(chan proteus.LoadReport, 1)
+				start := time.Now()
+				go func() { r, _ := waiter.Load(ctx); result <- r }()
+				synctest.Wait()
+				want := context.DeadlineExceeded
+				if canceled {
+					cancel()
+					want = context.Canceled
+				}
+				r := <-result
+				if !errors.Is(r.Err(), want) {
+					t.Fatalf("wait: %+v", r)
+				}
+				if !canceled && time.Since(start) != 50*time.Millisecond {
+					t.Fatalf("wait duration: %v", time.Since(start))
+				}
+				if len(waiter.Quarantined()) != 0 {
+					t.Fatal("abandoned wait quarantined image")
+				}
+				close(unblock)
+				if r := <-ownerReport; r.Err() != nil || len(r.Loaded) != 1 {
+					t.Fatalf("owner: %+v", r)
+				}
+				r, err := waiter.Reload(t.Context())
+				if err != nil || r.Err() != nil || len(r.Loaded) != 1 || calls.Load() != 1 {
+					t.Fatalf("reacquire: %+v %v, Init calls %d", r, err, calls.Load())
+				}
+				if err := owner.Close(t.Context()); err != nil {
+					t.Fatal(err)
+				}
+				if err := waiter.Close(t.Context()); err != nil {
+					t.Fatal(err)
 				}
 			})
 		})

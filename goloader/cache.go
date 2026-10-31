@@ -5,6 +5,7 @@
 package goloader
 
 import (
+	"context"
 	"sync"
 
 	"github.com/altessa-s/go-proteus"
@@ -14,26 +15,41 @@ import (
 var processHandles = newHandleCache()
 
 type cacheEntry struct {
-	symbols proteus.Symbols
-	err     error
+	done     chan struct{}
+	terminal bool
+	symbols  proteus.Symbols
+	err      error
 }
 
 type handleCache struct {
 	mu      sync.Mutex
-	entries map[string]cacheEntry
+	entries map[string]*cacheEntry
 }
 
-func newHandleCache() *handleCache { return &handleCache{entries: make(map[string]cacheEntry)} }
+func newHandleCache() *handleCache { return &handleCache{entries: make(map[string]*cacheEntry)} }
 
-func (c *handleCache) getOrOpen(digest string, fn func() (proteus.Symbols, bool, error)) (proteus.Symbols, bool, error) {
+func (c *handleCache) getOrOpen(ctx context.Context, digest string, fn func() (proteus.Symbols, bool, error)) (proteus.Symbols, bool, error) {
 	c.mu.Lock()
-	defer c.mu.Unlock()
 	if entry, ok := c.entries[digest]; ok {
-		return entry.symbols, true, entry.err
+		c.mu.Unlock()
+		select {
+		case <-ctx.Done():
+			return nil, false, ctx.Err()
+		case <-entry.done:
+			return entry.symbols, entry.terminal, entry.err
+		}
 	}
-	syms, terminal, err := fn()
-	if terminal {
-		c.entries[digest] = cacheEntry{symbols: syms, err: err}
+	entry := &cacheEntry{done: make(chan struct{})}
+	c.entries[digest] = entry
+	c.mu.Unlock()
+
+	// Package initializers may open other images; never run them under the registry lock.
+	entry.symbols, entry.terminal, entry.err = fn()
+	c.mu.Lock()
+	if !entry.terminal {
+		delete(c.entries, digest)
 	}
-	return syms, terminal, err
+	close(entry.done)
+	c.mu.Unlock()
+	return entry.symbols, entry.terminal, entry.err
 }

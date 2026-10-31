@@ -150,7 +150,7 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return proteus.Opened{}, ctxErr
 	}
-	syms, terminal, err := o.cache.getOrOpen(streamHash, func() (proteus.Symbols, bool, error) {
+	syms, terminal, err := o.cache.getOrOpen(ctx, streamHash, func() (proteus.Symbols, bool, error) {
 		finalPath := filepath.Join(o.workDir, streamHash+".so")
 		if renameErr := os.Rename(tmpPath, finalPath); renameErr != nil {
 			return nil, false, fmt.Errorf("goloader: commit snapshot %q: %w", finalPath, renameErr)
