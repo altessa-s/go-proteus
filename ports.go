@@ -12,6 +12,7 @@ import (
 // Source discovers plugin candidates available for admission.
 type Source interface {
 	// Candidates returns the current set of plugin candidates in deterministic order.
+	// Candidate-specific failures use Candidate.Err; the returned error describes a whole-source failure.
 	Candidates(ctx context.Context) ([]Candidate, error)
 }
 
@@ -19,6 +20,10 @@ type Source interface {
 type Candidate struct {
 	// ID is a stable source identifier for logging and reporting (typically the base filename).
 	ID string
+
+	// Err is a discovery failure for this candidate. When non-nil, admission rejects
+	// the candidate without calling Open or inspecting Signature.
+	Err error
 
 	// Open opens a fresh stream to the candidate's .so bytes.
 	// The host calls Open only after pre-open manifest and policy checks pass.

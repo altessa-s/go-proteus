@@ -13,6 +13,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sync/atomic"
 	"testing"
 
@@ -314,6 +315,27 @@ func TestIndependentOpenersOwnSnapshots(t *testing.T) {
 	_, err = a.Open(t.Context(), cand, digest, 0)
 	require.NoError(t, err, "successful result must remain cached")
 	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Empty(t, entries)
+}
+
+func TestPackageInitGoexitContainedAndCached(t *testing.T) {
+	t.Parallel()
+	var calls atomic.Int32
+	opener, err := goloader.New(t.TempDir(), goloader.WithOpenFunc(func(context.Context, string) (proteus.Symbols, error) {
+		calls.Add(1)
+		runtime.Goexit()
+		return nil, nil
+	}))
+	require.NoError(t, err)
+	candidate, digest := makeCandidate("goexit.so", []byte("goexit"))
+	for range 2 {
+		opened, err := opener.Open(t.Context(), candidate, digest, 0)
+		require.ErrorIs(t, err, proteus.ErrPanicked)
+		require.True(t, opened.ContentFailure)
+	}
+	require.EqualValues(t, 1, calls.Load())
+	entries, err := os.ReadDir(opener.WorkDir())
 	require.NoError(t, err)
 	require.Empty(t, entries)
 }

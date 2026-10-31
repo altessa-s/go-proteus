@@ -140,7 +140,7 @@ func TestRootConfinementSymlinksAndPermissions_D9(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srcPermSO.Candidates(context.Background()); !errors.Is(err, proteus.ErrInsecurePermissions) {
+	if err := candidateError(t, srcPermSO); !errors.Is(err, proteus.ErrInsecurePermissions) {
 		t.Fatalf("expected 0666 .so rejected with ErrInsecurePermissions, got %v", err)
 	}
 	// Allowed when WithSkipPermissionChecks() is set.
@@ -164,7 +164,7 @@ func TestRootConfinementSymlinksAndPermissions_D9(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srcPermSig.Candidates(context.Background()); !errors.Is(err, proteus.ErrInsecurePermissions) {
+	if err := candidateError(t, srcPermSig); !errors.Is(err, proteus.ErrInsecurePermissions) {
 		t.Fatalf("expected 0666 .so.sig rejected with ErrInsecurePermissions, got %v", err)
 	}
 
@@ -179,7 +179,7 @@ func TestRootConfinementSymlinksAndPermissions_D9(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srcNoFollow.Candidates(context.Background()); !errors.Is(err, proteus.ErrInsecurePermissions) {
+	if err := candidateError(t, srcNoFollow); !errors.Is(err, proteus.ErrInsecurePermissions) {
 		t.Fatalf("expected symlink .so rejected when FollowSymlinks=false, got %v", err)
 	}
 
@@ -203,7 +203,7 @@ func TestRootConfinementSymlinksAndPermissions_D9(t *testing.T) {
 	if err := os.Symlink(outsideFile, filepath.Join(dirSymlink, "escape.so")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srcFollow.Candidates(context.Background()); err == nil {
+	if err := candidateError(t, srcFollow); err == nil {
 		t.Fatal("expected symlink escaping outside os.Root to be rejected")
 	}
 
@@ -216,7 +216,7 @@ func TestRootConfinementSymlinksAndPermissions_D9(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srcTinySig.Candidates(context.Background()); !errors.Is(err, coreio.ErrReadLimitExceeded) {
+	if err := candidateError(t, srcTinySig); !errors.Is(err, coreio.ErrReadLimitExceeded) {
 		t.Fatalf("expected ErrReadLimitExceeded for oversized signature, got %v", err)
 	}
 
@@ -224,7 +224,7 @@ func TestRootConfinementSymlinksAndPermissions_D9(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if _, err := srcTinyArt.Candidates(context.Background()); !errors.Is(err, coreio.ErrReadLimitExceeded) {
+	if err := candidateError(t, srcTinyArt); !errors.Is(err, coreio.ErrReadLimitExceeded) {
 		t.Fatalf("expected ErrReadLimitExceeded for oversized artifact, got %v", err)
 	}
 
@@ -263,4 +263,18 @@ func TestRootConfinementSymlinksAndPermissions_D9(t *testing.T) {
 	if _, err := vCands[0].Open(); err == nil {
 		t.Fatal("expected Open() to fail after file removal")
 	}
+}
+
+func candidateError(t *testing.T, source *dirsource.Source) error {
+	t.Helper()
+	candidates, err := source.Candidates(t.Context())
+	if err != nil {
+		t.Fatalf("whole-source error: %v", err)
+	}
+	for _, candidate := range candidates {
+		if candidate.Err != nil {
+			return candidate.Err
+		}
+	}
+	return nil
 }

@@ -15,6 +15,11 @@ import (
 )
 
 func (m *Manager) admitCandidate(ctx context.Context, cand proteus.Candidate, report *proteus.LoadReport) {
+	if cand.Err != nil {
+		report.Failed = append(report.Failed, proteus.CandidateReport{Source: cand.ID, Err: cand.Err})
+		m.observer.Admitted(proteus.AdmissionEvent{Source: cand.ID, Outcome: proteus.OutcomeRejected, Err: cand.Err})
+		return
+	}
 	if len(cand.Signature) > 0 && m.verifier != nil {
 		m.admitSigned(ctx, cand, report)
 		return

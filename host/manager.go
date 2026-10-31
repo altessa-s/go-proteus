@@ -56,14 +56,16 @@ type Manager struct {
 	goarch            string
 	hostBuildInfo     func() (*debug.BuildInfo, bool)
 
-	loadMu         sync.Mutex
-	mu             sync.RWMutex
-	closed         bool
-	ready          map[string]readyPlugin
-	failed         map[string]*proteus.Plugin
-	loadedHashes   map[string]string
-	unloadedHashes map[string]struct{}
-	quarantine     *quarantineBook
+	loadMu            sync.Mutex
+	mu                sync.RWMutex
+	closed            bool
+	discoveryErr      error
+	discoveryFailures []string
+	ready             map[string]readyPlugin
+	failed            map[string]*proteus.Plugin
+	loadedHashes      map[string]string
+	unloadedHashes    map[string]struct{}
+	quarantine        *quarantineBook
 }
 
 // New constructs a [Manager] using source, opener, and opts.
@@ -194,6 +196,16 @@ func (m *Manager) Load(ctx context.Context) (proteus.LoadReport, error) {
 	}
 
 	candidates, err := m.source.Candidates(ctx)
+	m.mu.Lock()
+	m.discoveryErr = err
+	if err == nil {
+		// Discovery failures describe the latest successful scan, including removed entries.
+		for _, key := range m.discoveryFailures {
+			delete(m.failed, key)
+		}
+		m.discoveryFailures = nil
+	}
+	m.mu.Unlock()
 	if err != nil {
 		return proteus.LoadReport{}, err
 	}
@@ -205,6 +217,11 @@ func (m *Manager) Load(ctx context.Context) (proteus.LoadReport, error) {
 		}
 		before := len(report.Failed)
 		m.admitCandidate(ctx, cand, &report)
+		if cand.Err != nil {
+			m.mu.Lock()
+			m.discoveryFailures = append(m.discoveryFailures, "source:"+cand.ID)
+			m.mu.Unlock()
+		}
 		for _, failure := range report.Failed[before:] {
 			m.recordFailedPlugin(sdk.Descriptor{Name: failure.Name}, proteus.Manifest{}, failure.Source, failure.SHA256, failure.Err)
 		}
@@ -388,6 +405,7 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 		failedList = append(failedList, p)
 	}
 	qCount := m.quarantine.len()
+	discoveryErr := m.discoveryErr
 	m.mu.RUnlock()
 
 	var (
@@ -447,7 +465,7 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 	})
 
 	status := proteus.StatusServing
-	if failedCount > 0 {
+	if failedCount > 0 || discoveryErr != nil {
 		if readyCount == 0 {
 			status = proteus.StatusNotServing
 		} else {
@@ -456,11 +474,12 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 	}
 
 	return proteus.HealthReport{
-		Status:      status,
-		Ready:       readyCount,
-		Failed:      failedCount,
-		Quarantined: qCount,
-		Plugins:     plugins,
+		Status:       status,
+		DiscoveryErr: discoveryErr,
+		Ready:        readyCount,
+		Failed:       failedCount,
+		Quarantined:  qCount,
+		Plugins:      plugins,
 	}
 }
 

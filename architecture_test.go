@@ -82,6 +82,7 @@ var layers = map[string]layerRule{
 	"internal/testplugins/name_mismatch":   {internal: []string{"sdk"}},
 	"internal/testplugins/spi_v1":          {internal: []string{"sdk"}},
 	"internal/testplugins/spi_v2":          {internal: []string{"sdk"}},
+	"internal/testplugins/pkg_init_goexit": {internal: []string{"sdk"}},
 	"internal/testplugins/pkg_init_panics": {internal: []string{"sdk"}},
 	"cmd/proteus": {
 		internal: []string{".", "sdk", "signature", "signing", "dirsource"},

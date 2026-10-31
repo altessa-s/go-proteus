@@ -108,13 +108,15 @@ func (s *Source) Candidates(ctx context.Context) ([]proteus.Candidate, error) {
 
 		f, _, err := s.openVerifiedFileInRoot(root, name, s.maxArtifactBytes)
 		if err != nil {
-			return nil, err
+			out = append(out, proteus.Candidate{ID: name, Err: err})
+			continue
 		}
 		_ = f.Close()
 
 		sigBytes, err := s.readSignatureInRoot(root, name+s.signatureSuffix)
 		if err != nil {
-			return nil, err
+			out = append(out, proteus.Candidate{ID: name, Err: err})
+			continue
 		}
 
 		candidateName := name

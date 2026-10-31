@@ -296,3 +296,35 @@ func TestIntegrationFaultIsolation_D1_D3_D9(t *testing.T) {
 	}
 
 }
+
+func TestIntegrationPackageInitGoexitIndependentOpeners(t *testing.T) {
+	t.Parallel()
+	path := proteustest.BuildPlugin(t, "internal/testplugins/pkg_init_goexit")
+	source, err := dirsource.New(filepath.Dir(path))
+	if err != nil {
+		t.Fatal(err)
+	}
+	for range 2 {
+		opener, err := goloader.New(t.TempDir())
+		if err != nil {
+			t.Fatal(err)
+		}
+		manager, err := host.New(source, opener, host.WithUnsigned(proteus.UnsignedAllow))
+		if err != nil {
+			t.Fatal(err)
+		}
+		report, err := manager.Load(t.Context())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(report.Failed) != 1 || !errors.Is(report.Err(), proteus.ErrPanicked) {
+			t.Fatalf("load: %+v", report)
+		}
+		if health := manager.Health(t.Context()); health.Status != proteus.StatusNotServing {
+			t.Fatalf("health: %+v", health)
+		}
+		if err := manager.Close(t.Context()); err != nil {
+			t.Fatal(err)
+		}
+	}
+}

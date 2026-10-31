@@ -6,6 +6,7 @@ package goloader
 
 import (
 	"context"
+	"fmt"
 	"sync"
 
 	"github.com/altessa-s/go-proteus"
@@ -44,12 +45,25 @@ func (c *handleCache) getOrOpen(ctx context.Context, digest string, fn func() (p
 	c.mu.Unlock()
 
 	// Package initializers may open other images; never run them under the registry lock.
-	entry.symbols, entry.terminal, entry.err = fn()
+	go func() {
+		returned := false
+		defer func() {
+			if !returned {
+				entry.symbols = nil
+				entry.terminal = true
+				entry.err = fmt.Errorf("%w: plugin loader exited without returning", proteus.ErrPanicked)
+			}
+			close(entry.done)
+		}()
+		entry.symbols, entry.terminal, entry.err = fn()
+		returned = true
+	}()
+	// Keep the caller's snapshot alive until the worker has finished, including Goexit.
+	<-entry.done
 	c.mu.Lock()
 	if !entry.terminal {
 		delete(c.entries, digest)
 	}
-	close(entry.done)
 	c.mu.Unlock()
 	return entry.symbols, entry.terminal, entry.err
 }

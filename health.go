@@ -49,6 +49,10 @@ type PluginHealth struct {
 
 // HealthReport summarizes the operational health of the plugin manager.
 type HealthReport struct {
+	// DiscoveryErr is the most recent whole-source discovery error, cleared by a successful scan.
+	// It affects Status but is not counted as a failed plugin.
+	DiscoveryErr error
+
 	// Status is the aggregate health status of the manager.
 	Status HealthStatus
 
