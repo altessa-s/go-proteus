@@ -222,7 +222,6 @@ func TestGoModPurity(t *testing.T) {
 		"google.golang.org/grpc",
 		"google.golang.org/protobuf",
 		"gopkg.in/yaml",
-		"golang.org/x/sys",
 		"replace ",
 	}
 
