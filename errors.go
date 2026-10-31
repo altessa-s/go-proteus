@@ -65,6 +65,9 @@ var (
 	// ErrInitFailed indicates that a plugin's Init hook returned an error or exceeded its timeout.
 	ErrInitFailed = errors.New("proteus: plugin initialization failed")
 
+	// ErrHookExited indicates that a lifecycle hook terminated its goroutine without returning.
+	ErrHookExited = errors.New("proteus: plugin hook exited without returning")
+
 	// ErrPanicked indicates that plugin code panicked during open, initialization, shutdown, health check, or SPI execution.
 	ErrPanicked = errors.New("proteus: plugin panicked")
 

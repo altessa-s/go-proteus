@@ -7,6 +7,7 @@ package spi
 import (
 	"fmt"
 	"iter"
+	"reflect"
 
 	"github.com/altessa-s/go-proteus"
 	"github.com/altessa-s/go-proteus/sdk"
@@ -202,21 +203,30 @@ func unwrapSPIVersion(raw any) (sdk.SPIVersion, bool) {
 }
 
 func unwrapSymbol[T any](raw any) (T, bool) {
-	if raw == nil {
-		var zero T
-		return zero, false
-	}
-	if v, ok := raw.(T); ok {
+	if v, ok := raw.(T); ok && !nilProvider(v) {
 		return v, true
 	}
-	if ptr, ok := raw.(*T); ok && ptr != nil {
-		return *ptr, true
-	}
-	if anyPtr, ok := raw.(*any); ok && anyPtr != nil && *anyPtr != nil {
-		if v, ok := (*anyPtr).(T); ok {
+	// plugin.Lookup returns a pointer to an exported variable, including **Impl
+	// for a variable whose value is *Impl. Dereference exactly one variable pointer.
+	value := reflect.ValueOf(raw)
+	if value.IsValid() && value.Kind() == reflect.Pointer && !value.IsNil() {
+		if v, ok := reflect.TypeAssert[T](value.Elem()); ok && !nilProvider(v) {
 			return v, true
 		}
 	}
 	var zero T
 	return zero, false
+}
+
+func nilProvider(v any) bool {
+	value := reflect.ValueOf(v)
+	if !value.IsValid() {
+		return true
+	}
+	switch value.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
+		return value.IsNil()
+	default:
+		return false
+	}
 }

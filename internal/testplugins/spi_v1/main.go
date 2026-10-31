@@ -17,15 +17,15 @@ var Descriptor = sdk.Descriptor{
 var SPIVersion = sdk.SPIVersion{Contract: "greeter", Major: 1, Minor: 0}
 
 // Greeter is the exported v1.0 SPI provider.
-var Greeter any = v1Greeter{}
+var Greeter = &v1Greeter{}
 
 type v1Greeter struct{}
 
-func (v1Greeter) SPIVersion() sdk.SPIVersion {
+func (*v1Greeter) SPIVersion() sdk.SPIVersion {
 	return sdk.SPIVersion{Contract: "greeter", Major: 1, Minor: 0}
 }
 
-func (v1Greeter) Greet(name string) string {
+func (*v1Greeter) Greet(name string) string {
 	return "v1:" + name
 }
 

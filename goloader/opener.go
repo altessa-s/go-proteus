@@ -26,7 +26,7 @@ import (
 
 const writableByGroupOrOther fs.FileMode = 0o022
 
-// Opener implements [proteus.Opener] using content-addressed snapshot files and a handle cache.
+// Opener implements [proteus.Opener] using private snapshot files and a content-addressed handle cache.
 type Opener struct {
 	workDir          string
 	maxArtifactBytes int64
@@ -108,12 +108,7 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 	if err != nil {
 		return proteus.Opened{}, err
 	}
-	cleanupTmp := true
-	defer func() {
-		if cleanupTmp {
-			_ = os.Remove(tmpPath)
-		}
-	}()
+	defer func() { _ = os.Remove(tmpPath) }()
 
 	if (verifiedSHA256 != "" && !strings.EqualFold(streamHash, verifiedSHA256)) || (verifiedSize > 0 && writtenSize != verifiedSize) {
 		return proteus.Opened{
@@ -151,13 +146,9 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 		return proteus.Opened{}, ctxErr
 	}
 	syms, terminal, err := o.cache.getOrOpen(ctx, streamHash, func() (proteus.Symbols, bool, error) {
-		finalPath := filepath.Join(o.workDir, streamHash+".so")
-		if renameErr := os.Rename(tmpPath, finalPath); renameErr != nil {
-			return nil, false, fmt.Errorf("goloader: commit snapshot %q: %w", finalPath, renameErr)
-		}
-		cleanupTmp = false
-		defer func() { _ = os.Remove(finalPath) }()
-		symbols, openErr := invokeOpenSafe(ctx, finalPath, o.openFn)
+		// Keep the exclusively created pathname: independent caches and processes may
+		// load the same digest from this work directory concurrently.
+		symbols, openErr := invokeOpenSafe(ctx, tmpPath, o.openFn)
 		return symbols, !errors.Is(openErr, context.Canceled) && !errors.Is(openErr, context.DeadlineExceeded), openErr
 	})
 	if err != nil {
@@ -174,7 +165,7 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 
 func (o *Opener) streamToTempFile(r io.Reader) (string, string, int64, error) {
 	const snapshotFilePerm = 0o600
-	tmpFile, err := os.CreateTemp(o.workDir, ".proteus-snap-*.tmp")
+	tmpFile, err := os.CreateTemp(o.workDir, ".proteus-snap-*.so")
 	if err != nil {
 		return "", "", 0, fmt.Errorf("goloader: create snapshot temp file: %w", err)
 	}

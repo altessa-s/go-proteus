@@ -16,3 +16,6 @@ for greeter, p := range spi.Providers[Greeter](mgr, "Greeter", spi.WithMajor(1),
 ```
 
 `WithMajor(0)` explicitly requires major zero. `WithMinMinor(n)` works independently of a major constraint. Internally, -1 denotes an omitted constraint; valid version components are nonnegative.
+
+Providers accept direct symbols and dereference one exported-variable pointer, including `var Greeter = &greeterImpl{}`.
+Nil interfaces and typed nil provider values are skipped with `proteus.ErrInvalidSymbol`.

@@ -42,3 +42,7 @@ all admitted workers to exit, including workers abandoned by the health watchdog
 wait. Once workers exit, the final Close hook receives a fresh context with that manager's close timeout, independent of caller cancellation.
 On timeout, cleanup continues after the workers exit; resources remain alive if a worker never returns.
 Health results reflect lifecycle state after probing, so removed plugins are not reported as ready.
+
+Lifecycle watchdogs require the hook to return normally. A hook that calls `runtime.Goexit` fails with `proteus.ErrHookExited`;
+Init also wraps `proteus.ErrInitFailed` and records a terminal initialization failure for shared images. HealthCheck and Close report the exit
+as a failure, while panic handling remains separate.

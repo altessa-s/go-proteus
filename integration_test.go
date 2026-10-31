@@ -105,6 +105,7 @@ func TestIntegrationFullPipelineAndSPI(t *testing.T) {
 		t.Fatalf("expected 3 loaded plugins and StatusServing, got report=%+v health=%+v", report, health)
 	}
 
+	// spi_v1 exports a concrete *v1Greeter variable; Lookup returns **v1Greeter.
 	var greeted []string
 	var skipped []string
 	for g, p := range spi.Providers[greeterContract](

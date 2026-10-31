@@ -20,4 +20,6 @@ Different digests can open concurrently (including nested opens), and same-diges
 without changing the shared result. Injected `WithOpenFunc` loaders have isolated caches. Both the signed digest and positive signed size
 are checked before the low-level loader executes. Temporary snapshot/storage failures are retryable;
 `Opened.ContentFailure` identifies terminal loader failures attributable to verified bytes.
-Snapshots are unlinked after the loader returns on success or failure; cached handles remain mapped.
+Each load attempt retains its exclusively created snapshot pathname until cleanup; independent openers and processes can share a workDir
+without replacing or removing one another’s snapshots. Snapshots are unlinked after the loader returns on success or failure;
+cached handles remain mapped.

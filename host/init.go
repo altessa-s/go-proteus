@@ -197,6 +197,7 @@ func runWatchdog(
 	done := make(chan error, 1)
 	go func() {
 		var err error
+		returned := false
 		defer func() {
 			if r := recover(); r != nil {
 				stack := debug.Stack()
@@ -211,10 +212,13 @@ func runWatchdog(
 				} else {
 					err = fmt.Errorf("%w: plugin %q %s panicked: %v", proteus.ErrPanicked, pluginName, hookName, r)
 				}
+			} else if !returned {
+				err = fmt.Errorf("%w: plugin %q %s exited without returning", proteus.ErrHookExited, pluginName, hookName)
 			}
 			done <- err
 		}()
 		err = hook(callCtx)
+		returned = true
 	}()
 
 	select {

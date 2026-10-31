@@ -12,6 +12,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/altessa-s/go-proteus"
 	"github.com/altessa-s/go-proteus/sdk"
 	"github.com/altessa-s/go-proteus/spi"
@@ -244,6 +246,50 @@ func TestMajorZeroAndMinorOnly(t *testing.T) {
 			}
 			if (count == 1) != tc.want {
 				t.Fatalf("provider count: %d", count)
+			}
+		})
+	}
+}
+
+func TestProvidersExportedVariables(t *testing.T) {
+	t.Parallel()
+	concrete := &greeterImpl{prefix: "hello"}
+	var nilInterface Greeter
+	var nilConcrete *greeterImpl
+	var typedNil Greeter = nilConcrete
+	var boxed any = concrete
+	for _, tc := range []struct {
+		name string
+		raw  any
+		want bool
+	}{
+		{"direct", concrete, true},
+		{"concrete variable", &concrete, true},
+		{"any variable", &boxed, true},
+		{"nil interface variable", &nilInterface, false},
+		{"nil concrete variable", &nilConcrete, false},
+		{"typed nil interface variable", &typedNil, false},
+		{"direct typed nil", nilConcrete, false},
+		{"nil variable pointer", (**greeterImpl)(nil), false},
+		{"wrong type", new(42), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			t.Parallel()
+			p := makePlugin("p", fakeSymbols{"Greeter": tc.raw})
+			var skips []spi.SkipEvent
+			count := 0
+			for g := range spi.Providers[Greeter](&fakeRegistry{plugins: []*proteus.Plugin{p}}, "Greeter",
+				spi.WithOnSkip(func(ev spi.SkipEvent) { skips = append(skips, ev) })) {
+				count++
+				require.Equal(t, "hello world", g.Greet("world"))
+			}
+			if tc.want {
+				require.Equal(t, 1, count)
+				require.Empty(t, skips)
+			} else {
+				require.Zero(t, count)
+				require.Len(t, skips, 1)
+				require.ErrorIs(t, skips[0].Err, proteus.ErrInvalidSymbol)
 			}
 		})
 	}

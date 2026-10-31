@@ -16,6 +16,8 @@ import (
 	"sync/atomic"
 	"testing"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/altessa-s/go-proteus"
 	"github.com/altessa-s/go-proteus/goloader"
 
@@ -267,30 +269,51 @@ func TestSizeCheckedBeforeLoaderAndSnapshotsRemoved(t *testing.T) {
 	}
 }
 
-func TestRenameFailureIsRetryable(t *testing.T) {
+func TestIndependentOpenersOwnSnapshots(t *testing.T) {
 	t.Parallel()
-	cand, digest := makeCandidate("retry", []byte("retry rename"))
+	cand, digest := makeCandidate("shared", []byte("shared snapshot"))
 	dir := t.TempDir()
-	blocker := filepath.Join(dir, digest+".so")
-	if err := os.Mkdir(blocker, 0o700); err != nil {
-		t.Fatal(err)
-	}
-	calls := 0
-	opener, err := goloader.New(dir, goloader.WithOpenFunc(func(context.Context, string) (proteus.Symbols, error) { calls++; return stubSymbols{}, nil }))
-	if err != nil {
-		t.Fatal(err)
-	}
-	opened, err := opener.Open(t.Context(), cand, digest, 0)
-	if err == nil || opened.ContentFailure {
-		t.Fatalf("storage failure classified as content: %+v %v", opened, err)
-	}
-	if err := os.Remove(blocker); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := opener.Open(t.Context(), cand, digest, 0); err != nil {
-		t.Fatal(err)
-	}
-	if calls != 1 {
-		t.Fatalf("loader calls: %d", calls)
-	}
+	entered := make(chan string, 1)
+	resume := make(chan struct{})
+	defer close(resume)
+	a, err := goloader.New(dir, goloader.WithOpenFunc(func(_ context.Context, path string) (proteus.Symbols, error) {
+		entered <- path
+		<-resume
+		data, err := os.ReadFile(path)
+		if err == nil && string(data) != "shared snapshot" {
+			err = errors.New("snapshot content changed")
+		}
+		return stubSymbols{}, err
+	}))
+	require.NoError(t, err)
+	done := make(chan error, 1)
+	go func() {
+		_, err := a.Open(t.Context(), cand, digest, 0)
+		done <- err
+	}()
+	aPath := <-entered
+	var bPath string
+	b, err := goloader.New(dir, goloader.WithOpenFunc(func(_ context.Context, path string) (proteus.Symbols, error) {
+		bPath = path
+		data, err := os.ReadFile(path)
+		if err == nil && string(data) != "shared snapshot" {
+			err = errors.New("snapshot content changed")
+		}
+		return stubSymbols{}, err
+	}))
+	require.NoError(t, err)
+	_, err = b.Open(t.Context(), cand, digest, 0)
+	require.NoError(t, err)
+	require.NotEqual(t, aPath, bPath)
+	_, err = os.Stat(bPath)
+	require.ErrorIs(t, err, os.ErrNotExist)
+	_, err = os.Stat(aPath)
+	require.NoError(t, err, "second opener cleanup removed the first snapshot")
+	resume <- struct{}{}
+	require.NoError(t, <-done)
+	_, err = a.Open(t.Context(), cand, digest, 0)
+	require.NoError(t, err, "successful result must remain cached")
+	entries, err := os.ReadDir(dir)
+	require.NoError(t, err)
+	require.Empty(t, entries)
 }
