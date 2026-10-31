@@ -1,0 +1,11 @@
+github.com/altessa-s/go-atlas-core
+github.com/altessa-s/go-tlsutils
+github.com/fsnotify/fsnotify
+github.com/spf13/cobra
+github.com/inconshreveable/mousetrap
+github.com/spf13/pflag
+github.com/youmark/pkcs8
+golang.org/x/crypto
+golang.org/x/sys
+github.com/stretchr/testify
+go.yaml.in/yaml/v3

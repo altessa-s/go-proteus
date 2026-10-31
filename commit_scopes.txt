@@ -1,0 +1,28 @@
+# Commit Scopes for go-proteus
+# Use these scopes in conventional commits: type(scope): description
+# The scope is optional: omit it for repository-wide changes. Never use `root`.
+# Only the first word of a non-comment line is a scope.
+# Example: fix(dirsource): refuse symlinks outside the plugin root
+
+# Repository scopes
+deps                        # Dependency updates (Dependabot writes build(deps): bump ...)
+README                      # Root README
+docs                        # Documentation
+
+# Packages
+proteus                     # Root package: plugin entity, manifest, health, ports
+sdk                         # Contract imported by plugins: descriptor, SPI and dependency info
+signature                   # DSSE envelope, manifest codec, key set and verification
+host                        # Manager: admission, lifecycle, quarantine, health
+spi                         # Typed provider negotiation
+dirsource                   # Plugin directory source
+goloader                    # Opener over the standard plugin package
+watch                       # Directory watcher that triggers reloads
+signing                     # Signing and key generation
+proteustest                 # Test doubles and plugin build helpers
+internal/testplugins        # Fixture plugin sources
+cmd/proteus                 # proteus CLI: keygen, sign, verify, inspect
+
+# Tooling
+devtools                    # Development tool dependencies
+ci                          # GitHub Actions workflows and scripts
