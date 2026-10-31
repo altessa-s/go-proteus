@@ -87,7 +87,13 @@ func TestHealthRetainsResourcesUntilWorkerFinishes(t *testing.T) {
 								}
 								return nil
 							},
-							sdk.SymbolClose: func(context.Context) error { closes.Add(1); return nil },
+							sdk.SymbolClose: func(ctx context.Context) error {
+								if err := ctx.Err(); err != nil {
+									return err
+								}
+								closes.Add(1)
+								return nil
+							},
 						}}, nil
 					}
 					healthTimeout := time.Hour
@@ -194,19 +200,29 @@ func TestSharedImageRetainsAbandonedHealthProbe(t *testing.T) {
 			return proteus.Opened{Mapped: true, SHA256: hashOf(t.Name()), Symbols: memSymbols{
 				sdk.SymbolDescriptor: sdk.Descriptor{Name: "shared", Version: "1.0.0"},
 				sdk.SymbolHealth:     func(context.Context) error { <-unblock; return nil },
-				sdk.SymbolClose:      func(context.Context) error { closes.Add(1); return nil },
+				sdk.SymbolClose: func(ctx context.Context) error {
+					if err := ctx.Err(); err != nil {
+						return err
+					}
+					deadline, ok := ctx.Deadline()
+					if !ok || time.Until(deadline) != 50*time.Millisecond {
+						return proteus.ErrClosed
+					}
+					closes.Add(1)
+					return nil
+				},
 			}}, nil
 		}
-		create := func() *host.Manager {
+		create := func(timeout time.Duration) *host.Manager {
 			m, err := host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow),
-				host.WithHealthTimeout(time.Millisecond), host.WithCloseTimeout(50*time.Millisecond))
+				host.WithHealthTimeout(time.Millisecond), host.WithCloseTimeout(timeout))
 			require.NoError(t, err)
 			r, err := m.Load(t.Context())
 			require.NoError(t, err)
 			require.Len(t, r.Loaded, 1)
 			return m
 		}
-		a, b := create(), create()
+		a, b := create(50*time.Millisecond), create(time.Hour)
 		report := a.Health(t.Context())
 		require.ErrorIs(t, report.Plugins[0].Err, context.DeadlineExceeded)
 		require.ErrorIs(t, a.Close(t.Context()), context.DeadlineExceeded)
@@ -214,6 +230,9 @@ func TestSharedImageRetainsAbandonedHealthProbe(t *testing.T) {
 		require.Zero(t, closes.Load())
 		close(unblock)
 		synctest.Wait()
+		require.EqualValues(t, 1, closes.Load())
+		require.NoError(t, a.Close(t.Context()))
+		require.NoError(t, b.Close(t.Context()))
 		require.EqualValues(t, 1, closes.Load())
 		c, err := host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow))
 		require.NoError(t, err)

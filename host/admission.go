@@ -458,10 +458,17 @@ func (m *Manager) finalizeAdmission(
 		plugin: plugin,
 		probes: probes,
 		release: func(closeCtx context.Context) error {
-			return runWatchdog(closeCtx, m.closeTimeout, desc.Name, sdk.SymbolClose, nil, m.logger, func(ctx context.Context) error {
+			return runWatchdog(closeCtx, m.closeTimeout, desc.Name, sdk.SymbolClose, nil, m.logger, func(context.Context) error {
 				// A timed-out health worker still owns plugin resources until it exits.
 				probes.Wait()
-				return release(ctx)
+				// Cleanup gets its own budget even if the caller has already stopped waiting.
+				cleanupCtx := context.WithoutCancel(closeCtx)
+				if m.closeTimeout > 0 {
+					var cancel context.CancelFunc
+					cleanupCtx, cancel = context.WithTimeout(cleanupCtx, m.closeTimeout)
+					defer cancel()
+				}
+				return release(cleanupCtx)
 			})
 		},
 		setState: setState,

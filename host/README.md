@@ -38,6 +38,7 @@ Temporary storage failures appear in `Failed()` and health but do not quarantine
 Minimum versions use semantic-version prerelease precedence; build metadata has no precedence.
 
 Health probes acquire a manager-owned operation lease before invoking plugin code. Removal prevents new probes, and shutdown waits for
-all admitted workers to exit, including workers abandoned by the health watchdog. The releasing manager's close timeout bounds this wait
-and the final Close hook. On timeout, cleanup continues after the workers exit; resources remain alive if a worker never returns.
+all admitted workers to exit, including workers abandoned by the health watchdog. The releasing manager's close timeout bounds the caller's
+wait. Once workers exit, the final Close hook receives a fresh context with that manager's close timeout, independent of caller cancellation.
+On timeout, cleanup continues after the workers exit; resources remain alive if a worker never returns.
 Health results reflect lifecycle state after probing, so removed plugins are not reported as ready.
