@@ -88,8 +88,8 @@ func (v *Verifier) Verify(ctx context.Context, raw []byte) (proteus.VerifiedMani
 		}
 		sawKnownKey = true
 
-		sigBytes, err := base64.StdEncoding.Strict().DecodeString(entry.Sig)
-		if err != nil {
+		sigBytes, decErr := base64.StdEncoding.Strict().DecodeString(entry.Sig)
+		if decErr != nil {
 			continue
 		}
 		if !verifySignatureBytes(key, pae, sigBytes) {

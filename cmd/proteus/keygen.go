@@ -32,10 +32,10 @@ func newKeygenCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if err := signing.WriteFileAtomic(privOut, pair.PrivateKeyPEM, 0o600); err != nil {
+			if err := signing.WriteFileAtomic(privOut, pair.PrivateKeyPEM, outputPerm); err != nil {
 				return fmt.Errorf("write private key: %w", err)
 			}
-			if err := signing.WriteFileAtomic(pubOut, pair.PublicKeyPEM, 0o600); err != nil {
+			if err := signing.WriteFileAtomic(pubOut, pair.PublicKeyPEM, outputPerm); err != nil {
 				return fmt.Errorf("write public key: %w", err)
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "keyid: %s\nalgorithm: %s\n",

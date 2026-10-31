@@ -134,7 +134,19 @@ func TestGenerateParseSignAndVerify_D6_D22(t *testing.T) {
 	if err := signing.WriteFileAtomic(validSO, []byte("abc"), 0); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := signing.BuildManifest(validSO, "p", "1.0.0", signing.WithNotAfter(time.Now().Add(time.Hour))); err != nil {
+	if _, err := signing.BuildManifest(
+		validSO,
+		"p",
+		"1.0.0",
+		signing.WithGoos("linux"),
+		signing.WithGoarch("arm64"),
+		signing.WithGoos((*string)(nil)),
+		signing.WithGoarch((*string)(nil)),
+		signing.WithGoos(""),
+		signing.WithGoarch(""),
+		signing.WithTTL(-time.Second),
+		signing.WithNotAfter(time.Now().Add(time.Hour)),
+	); err != nil {
 		t.Fatalf("BuildManifest defaults: %v", err)
 	}
 	if err := signing.WriteFileAtomic(filepath.Join(validSO, "out.sig"), []byte("x"), 0o600); err == nil {

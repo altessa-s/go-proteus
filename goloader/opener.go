@@ -168,13 +168,14 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 }
 
 func (o *Opener) streamToTempFile(r io.Reader) (string, string, int64, error) {
+	const snapshotFilePerm = 0o600
 	tmpFile, err := os.CreateTemp(o.workDir, ".proteus-snap-*.tmp")
 	if err != nil {
 		return "", "", 0, fmt.Errorf("goloader: create snapshot temp file: %w", err)
 	}
 	tmpPath := tmpFile.Name()
 
-	if err := tmpFile.Chmod(0o600); err != nil {
+	if err := tmpFile.Chmod(snapshotFilePerm); err != nil {
 		_ = tmpFile.Close()
 		_ = os.Remove(tmpPath)
 		return "", "", 0, fmt.Errorf("goloader: chmod snapshot temp file: %w", err)
@@ -230,7 +231,8 @@ func invokeOpenSafe(ctx context.Context, path string, openFn OpenFunc) (syms pro
 }
 
 func ensureSecureWorkDir(dir string, checkPerms bool) error {
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	const snapshotDirPerm = 0o700
+	if err := os.MkdirAll(dir, snapshotDirPerm); err != nil {
 		return fmt.Errorf("goloader: create workDir %q: %w", dir, err)
 	}
 	linfo, err := os.Lstat(dir)

@@ -148,12 +148,16 @@ func SignFile(artifactPath, name, version string, signer crypto.Signer, opts ...
 // WriteFileAtomic writes data to a temporary file in the same directory as path, syncs it, sets
 // perm, and atomically renames it over path (Defect 22).
 func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
+	const (
+		defaultFilePerm = 0o600
+		defaultDirPerm  = 0o700
+	)
 	if perm == 0 {
-		perm = 0o600
+		perm = defaultFilePerm
 	}
 	cleaned := filepath.Clean(path)
 	dir := filepath.Dir(cleaned)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
+	if err := os.MkdirAll(dir, defaultDirPerm); err != nil {
 		return fmt.Errorf("signing: create parent directory %q: %w", dir, err)
 	}
 

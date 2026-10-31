@@ -199,6 +199,27 @@ func TestWorkDirPermissionsLimitsAndDefaultOpen(t *testing.T) {
 	if _, err := limitOpener.Open(context.Background(), bigCand, ""); !errors.Is(err, coreio.ErrReadLimitExceeded) {
 		t.Fatalf("expected ErrReadLimitExceeded, got %v", err)
 	}
+	streamBigCand := proteus.Candidate{
+		ID: "stream-big.so",
+		Open: func() (proteus.Artifact, error) {
+			return proteus.Artifact{
+				Reader: io.NopCloser(bytes.NewReader([]byte("0123456789abcdef"))),
+				Size:   4,
+			}, nil
+		},
+	}
+	if _, err := limitOpener.Open(context.Background(), streamBigCand, ""); !errors.Is(err, coreio.ErrReadLimitExceeded) {
+		t.Fatalf("expected stream ErrReadLimitExceeded, got %v", err)
+	}
+	openErrCand := proteus.Candidate{
+		ID: "open-err.so",
+		Open: func() (proteus.Artifact, error) {
+			return proteus.Artifact{}, errors.New("open failed")
+		},
+	}
+	if _, err := limitOpener.Open(context.Background(), openErrCand, ""); err == nil {
+		t.Fatal("expected error when Candidate.Open fails")
+	}
 
 	// Nil candidate Open function and cancelled context.
 	if _, err := limitOpener.Open(context.Background(), proteus.Candidate{ID: "nil"}, ""); err == nil {

@@ -212,6 +212,11 @@ func unwrapSymbol[T any](raw any) (T, bool) {
 	if ptr, ok := raw.(*T); ok && ptr != nil {
 		return *ptr, true
 	}
+	if anyPtr, ok := raw.(*any); ok && anyPtr != nil && *anyPtr != nil {
+		if v, ok := (*anyPtr).(T); ok {
+			return v, true
+		}
+	}
 	var zero T
 	return zero, false
 }

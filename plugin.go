@@ -25,6 +25,8 @@ const (
 
 	// StateUnloaded indicates that the plugin was explicitly unloaded or closed by the manager.
 	StateUnloaded
+
+	unknownString = "unknown"
 )
 
 // String returns the lowercase name of the lifecycle state.
@@ -37,7 +39,7 @@ func (s State) String() string {
 	case StateUnloaded:
 		return "unloaded"
 	default:
-		return "unknown"
+		return unknownString
 	}
 }
 

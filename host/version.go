@@ -28,8 +28,12 @@ func parseSemver(raw string) (semver, error) {
 	if idx := strings.IndexByte(s, '-'); idx >= 0 {
 		s = s[:idx]
 	}
+	const (
+		semverMinParts = 2
+		semverMaxParts = 3
+	)
 	parts := strings.Split(s, ".")
-	if len(parts) < 2 || len(parts) > 3 {
+	if len(parts) < semverMinParts || len(parts) > semverMaxParts {
 		return semver{}, fmt.Errorf("invalid semantic version %q", raw)
 	}
 	major, err := strconv.Atoi(parts[0])
@@ -41,7 +45,7 @@ func parseSemver(raw string) (semver, error) {
 		return semver{}, fmt.Errorf("invalid minor version in %q", raw)
 	}
 	patch := 0
-	if len(parts) == 3 {
+	if len(parts) == semverMaxParts {
 		patch, err = strconv.Atoi(parts[2])
 		if err != nil || patch < 0 {
 			return semver{}, fmt.Errorf("invalid patch version in %q", raw)

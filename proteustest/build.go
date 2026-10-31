@@ -5,15 +5,25 @@
 package proteustest
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
 	"runtime/debug"
 	"testing"
+
+	"github.com/altessa-s/go-atlas-core/io/files"
+)
+
+const (
+	pluginFilePerm     = 0o600
+	pluginCacheDirPerm = 0o700
+	cacheDigestLen     = 24
 )
 
 // BuildPlugin compiles the Go plugin package at pkgDir into a shared object
@@ -39,17 +49,17 @@ func BuildPlugin(tb testing.TB, pkgDir string) string {
 	}
 
 	raceEnabled, coverEnabled := currentBuildFlags()
-	cachePath, err := ensureCachedPlugin(absDir, raceEnabled, coverEnabled)
+	cachePath, err := ensureCachedPlugin(tb.Context(), absDir, raceEnabled, coverEnabled)
 	if err != nil {
 		tb.Fatalf("proteustest.BuildPlugin(%q): %v", pkgDir, err)
 	}
 
-	data, err := os.ReadFile(cachePath)
+	data, err := readRegularFile(cachePath)
 	if err != nil {
 		tb.Fatalf("proteustest.BuildPlugin: read cached .so %q: %v", cachePath, err)
 	}
 	outPath := filepath.Join(tb.TempDir(), filepath.Base(absDir)+".so")
-	if err := os.WriteFile(outPath, data, 0o600); err != nil {
+	if err := os.WriteFile(outPath, data, pluginFilePerm); err != nil {
 		tb.Fatalf("proteustest.BuildPlugin: write isolated .so %q: %v", outPath, err)
 	}
 	return outPath
@@ -71,7 +81,7 @@ func currentBuildFlags() (raceEnabled, coverEnabled bool) {
 	return raceEnabled, coverEnabled
 }
 
-func ensureCachedPlugin(absDir string, raceEnabled, coverEnabled bool) (string, error) {
+func ensureCachedPlugin(ctx context.Context, absDir string, raceEnabled, coverEnabled bool) (string, error) {
 	entries, err := os.ReadDir(absDir)
 	if err != nil {
 		return "", fmt.Errorf("read dir %q: %w", absDir, err)
@@ -83,18 +93,18 @@ func ensureCachedPlugin(absDir string, raceEnabled, coverEnabled bool) (string, 
 		if e.IsDir() || filepath.Ext(e.Name()) != ".go" {
 			continue
 		}
-		src, readErr := os.ReadFile(filepath.Join(absDir, e.Name()))
+		src, readErr := readRegularFile(filepath.Join(absDir, e.Name()))
 		if readErr != nil {
 			return "", fmt.Errorf("read %q: %w", e.Name(), readErr)
 		}
 		_, _ = h.Write([]byte(e.Name()))
 		_, _ = h.Write(src)
 	}
-	digest := hex.EncodeToString(h.Sum(nil))[:24]
+	digest := hex.EncodeToString(h.Sum(nil))[:cacheDigestLen]
 
 	cacheDir := filepath.Join(os.TempDir(), "proteustest-plugin-cache")
-	if err := os.MkdirAll(cacheDir, 0o700); err != nil {
-		return "", fmt.Errorf("create cache dir: %w", err)
+	if mkdirErr := os.MkdirAll(cacheDir, pluginCacheDirPerm); mkdirErr != nil {
+		return "", fmt.Errorf("create cache dir: %w", mkdirErr)
 	}
 	cachedSO := filepath.Join(cacheDir, filepath.Base(absDir)+"-"+digest+".so")
 	if info, statErr := os.Stat(cachedSO); statErr == nil && info.Size() > 0 {
@@ -109,11 +119,6 @@ func ensureCachedPlugin(absDir string, raceEnabled, coverEnabled bool) (string, 
 	_ = tmpFile.Close()
 	defer func() { _ = os.Remove(tmpSO) }()
 
-	goBin := filepath.Join(runtime.GOROOT(), "bin", "go")
-	if _, err := os.Stat(goBin); err != nil {
-		goBin = "go"
-	}
-
 	args := []string{"build", "-buildmode=plugin"}
 	if raceEnabled {
 		args = append(args, "-race")
@@ -123,18 +128,27 @@ func ensureCachedPlugin(absDir string, raceEnabled, coverEnabled bool) (string, 
 	}
 	args = append(args, "-o", tmpSO, ".")
 
-	cmd := exec.Command(goBin, args...)
+	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = absDir
 	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return "", fmt.Errorf("go %v failed: %w\n%s", args, err, string(output))
 	}
-	if err := os.Chmod(tmpSO, 0o600); err != nil {
-		return "", fmt.Errorf("chmod built plugin: %w", err)
+	if chmodErr := os.Chmod(tmpSO, pluginFilePerm); chmodErr != nil {
+		return "", fmt.Errorf("chmod built plugin: %w", chmodErr)
 	}
-	if err := os.Rename(tmpSO, cachedSO); err != nil {
-		return "", fmt.Errorf("rename cached plugin: %w", err)
+	if renameErr := os.Rename(tmpSO, cachedSO); renameErr != nil {
+		return "", fmt.Errorf("rename cached plugin: %w", renameErr)
 	}
 	return cachedSO, nil
+}
+
+func readRegularFile(path string) ([]byte, error) {
+	f, err := files.OpenRegular(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return io.ReadAll(f)
 }

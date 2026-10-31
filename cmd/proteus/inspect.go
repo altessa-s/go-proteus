@@ -9,7 +9,6 @@ import (
 	"encoding/json/jsontext"
 	"encoding/json/v2"
 	"fmt"
-	"os"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -40,7 +39,7 @@ func newInspectCmd() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			path := args[0]
 			if strings.HasSuffix(path, ".sig") {
-				data, err := os.ReadFile(path)
+				data, err := readRegularFile(path)
 				if err != nil {
 					return fmt.Errorf("read %q: %w", path, err)
 				}

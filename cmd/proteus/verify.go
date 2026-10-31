@@ -7,7 +7,6 @@ package main
 import (
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/spf13/cobra"
@@ -35,7 +34,7 @@ func newVerifyCmd() *cobra.Command {
 			}
 			keys := make([]signature.Key, 0, len(keyPaths))
 			for _, kp := range keyPaths {
-				pemBytes, err := os.ReadFile(kp)
+				pemBytes, err := readRegularFile(kp)
 				if err != nil {
 					return fmt.Errorf("read public key %q: %w", kp, err)
 				}
@@ -67,7 +66,7 @@ func newVerifyCmd() *cobra.Command {
 			if targetSig == "" {
 				targetSig = soPath + ".sig"
 			}
-			envBytes, err := os.ReadFile(targetSig)
+			envBytes, err := readRegularFile(targetSig)
 			if err != nil {
 				return fmt.Errorf("read signature %q: %w", targetSig, err)
 			}

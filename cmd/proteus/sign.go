@@ -47,7 +47,7 @@ func newSignCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			keyBytes, err := os.ReadFile(keyPath)
+			keyBytes, err := readRegularFile(keyPath)
 			if err != nil {
 				return fmt.Errorf("read private key %q: %w", keyPath, err)
 			}
@@ -80,7 +80,7 @@ func newSignCmd() *cobra.Command {
 			if targetSig == "" {
 				targetSig = soPath + ".sig"
 			}
-			if err := signing.WriteFileAtomic(targetSig, envBytes, 0o600); err != nil {
+			if err := signing.WriteFileAtomic(targetSig, envBytes, outputPerm); err != nil {
 				return err
 			}
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "signed: %s (keyid=%s sha256=%s)\n",
@@ -110,7 +110,7 @@ func resolvePassword(envName, filePath string) (string, error) {
 		return os.Getenv(envName), nil
 	}
 	if filePath != "" {
-		data, err := os.ReadFile(filePath)
+		data, err := readRegularFile(filePath)
 		if err != nil {
 			return "", fmt.Errorf("read password file %q: %w", filePath, err)
 		}

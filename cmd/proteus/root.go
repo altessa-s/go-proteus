@@ -4,7 +4,24 @@
 
 package main
 
-import "github.com/spf13/cobra"
+import (
+	"io"
+
+	"github.com/spf13/cobra"
+
+	"github.com/altessa-s/go-atlas-core/io/files"
+)
+
+const outputPerm = 0o600
+
+func readRegularFile(path string) ([]byte, error) {
+	f, err := files.OpenRegular(path)
+	if err != nil {
+		return nil, err
+	}
+	defer func() { _ = f.Close() }()
+	return io.ReadAll(f)
+}
 
 func newRootCmd() *cobra.Command {
 	root := &cobra.Command{

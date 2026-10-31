@@ -28,7 +28,7 @@ func (s HealthStatus) String() string {
 	case StatusNotServing:
 		return "not_serving"
 	default:
-		return "unknown"
+		return unknownString
 	}
 }
 

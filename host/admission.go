@@ -171,14 +171,14 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 	}
 
 	// Check host major version constraint before opening.
-	if err := m.checkHostMajor(name, manifest.HostMajor); err != nil {
-		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, err, report)
+	if hostErr := m.checkHostMajor(name, manifest.HostMajor); hostErr != nil {
+		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, hostErr, report)
 		return
 	}
 
 	// Check minimum plugin version floor before opening.
-	if err := m.checkMinVersion(name, ver); err != nil {
-		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, err, report)
+	if minErr := m.checkMinVersion(name, ver); minErr != nil {
+		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, minErr, report)
 		return
 	}
 
