@@ -20,12 +20,14 @@ import (
 	"time"
 
 	"github.com/altessa-s/go-proteus"
+	"github.com/altessa-s/go-proteus/sdk"
 )
 
 type readyPlugin struct {
 	plugin   *proteus.Plugin
-	closeFn  lifecycleHook
 	healthFn lifecycleHook
+	release  func(context.Context) error
+	setState func(proteus.State, error)
 }
 
 // Manager orchestrates discovery, admission, initialization, health probing, quarantine, and shutdown
@@ -53,6 +55,7 @@ type Manager struct {
 	goarch            string
 	hostBuildInfo     func() (*debug.BuildInfo, bool)
 
+	loadMu         sync.Mutex
 	mu             sync.RWMutex
 	closed         bool
 	ready          map[string]readyPlugin
@@ -72,6 +75,9 @@ func New(source proteus.Source, opener proteus.Opener, opts ...Option) (*Manager
 		return nil, errors.New("host: opener is required")
 	}
 	cfg := newOptions(opts...)
+	if cfg.unsigned != proteus.UnsignedReject && cfg.unsigned != proteus.UnsignedWarn && cfg.unsigned != proteus.UnsignedAllow {
+		return nil, fmt.Errorf("host: unknown unsigned policy %d", cfg.unsigned)
+	}
 
 	// Defect 8: Fail-closed unsigned default requires a Verifier at construction time.
 	if cfg.unsigned == proteus.UnsignedReject && cfg.verifier == nil {
@@ -177,9 +183,12 @@ func (m *Manager) Load(ctx context.Context) (proteus.LoadReport, error) {
 	if err := ctx.Err(); err != nil {
 		return proteus.LoadReport{}, err
 	}
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.closed {
+	m.loadMu.Lock()
+	defer m.loadMu.Unlock()
+	m.mu.RLock()
+	closed := m.closed
+	m.mu.RUnlock()
+	if closed {
 		return proteus.LoadReport{}, proteus.ErrClosed
 	}
 
@@ -193,11 +202,18 @@ func (m *Manager) Load(ctx context.Context) (proteus.LoadReport, error) {
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}
+		before := len(report.Failed)
 		m.admitCandidate(ctx, cand, &report)
+		for _, failure := range report.Failed[before:] {
+			m.recordFailedPlugin(sdk.Descriptor{Name: failure.Name}, proteus.Manifest{}, failure.Source, failure.SHA256, failure.Err)
+		}
 	}
 
 	report.Quarantine = m.quarantine.snapshot()
-	m.observer.RegistryChanged(m.statsLocked())
+	m.mu.RLock()
+	stats := m.statsLocked()
+	m.mu.RUnlock()
+	m.observer.RegistryChanged(stats)
 	return report, nil
 }
 
@@ -211,6 +227,8 @@ func (m *Manager) Reload(ctx context.Context) (proteus.LoadReport, error) {
 // transitions it to [proteus.StateUnloaded], and records its content hash so it will not be
 // re-initialized by subsequent Reload calls in the same process.
 func (m *Manager) Unload(ctx context.Context, name string) error {
+	m.loadMu.Lock()
+	defer m.loadMu.Unlock()
 	if err := ctx.Err(); err != nil {
 		return err
 	}
@@ -233,8 +251,8 @@ func (m *Manager) Unload(ctx context.Context, name string) error {
 	stats := m.statsLocked()
 	m.mu.Unlock()
 
-	closeErr := runWatchdog(ctx, m.closeTimeout, name, "Close", nil, m.logger, entry.closeFn)
-	entry.plugin.MarkUnloaded(closeErr)
+	closeErr := entry.release(ctx)
+	entry.setState(proteus.StateUnloaded, closeErr)
 	m.observer.RegistryChanged(stats)
 	return closeErr
 }
@@ -242,6 +260,8 @@ func (m *Manager) Unload(ctx context.Context, name string) error {
 // Close shuts down all ready plugins in reverse alphabetical order and marks the manager closed.
 // Subsequent calls to Close are idempotent and return nil.
 func (m *Manager) Close(ctx context.Context) error {
+	m.loadMu.Lock()
+	defer m.loadMu.Unlock()
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
@@ -263,8 +283,8 @@ func (m *Manager) Close(ctx context.Context) error {
 
 	var errs []error
 	for _, entry := range entries {
-		err := runWatchdog(ctx, m.closeTimeout, entry.plugin.Name(), "Close", nil, m.logger, entry.closeFn)
-		entry.plugin.MarkUnloaded(err)
+		err := entry.release(ctx)
+		entry.setState(proteus.StateUnloaded, err)
 		if err != nil {
 			errs = append(errs, err)
 		}
@@ -440,12 +460,16 @@ func (m *Manager) isNameAllowed(name string) bool {
 	return true
 }
 
-func (m *Manager) isNameLoadedLocked(name string) bool {
+func (m *Manager) isNameLoaded(name string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	_, ok := m.ready[name]
 	return ok
 }
 
-func (m *Manager) isHashLoadedOrUnloadedLocked(hash string) bool {
+func (m *Manager) isHashLoadedOrUnloaded(hash string) bool {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 	if !proteus.IsValidSHA256Hex(hash) {
 		return false
 	}

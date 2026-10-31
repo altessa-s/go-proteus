@@ -17,6 +17,7 @@ import (
 	"encoding/base64"
 	"encoding/pem"
 	"errors"
+	"fmt"
 	"math/big"
 	"strings"
 	"testing"
@@ -90,7 +91,7 @@ func TestKeyPolicy_D6(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected Ed25519 key accepted, got %v", err)
 	}
-	if edKey.Algorithm() != signature.AlgEd25519 || len(edKey.ID()) != 64 || edKey.PublicKey() == nil {
+	if edKey.Algorithm() != signature.AlgEd25519 || len(edKey.ID()) != 32 || edKey.PublicKey() == nil {
 		t.Fatalf("unexpected Ed25519 key metadata: alg=%s id=%s", edKey.Algorithm(), edKey.ID())
 	}
 
@@ -103,7 +104,7 @@ func TestKeyPolicy_D6(t *testing.T) {
 	if err != nil {
 		t.Fatalf("expected ECDSA P-256 key accepted, got %v", err)
 	}
-	if ecKey.Algorithm() != signature.AlgECDSAP256 || len(ecKey.ID()) != 64 {
+	if ecKey.Algorithm() != signature.AlgECDSAP256 || len(ecKey.ID()) != 32 {
 		t.Fatalf("unexpected ECDSA P-256 key metadata: alg=%s id=%s", ecKey.Algorithm(), ecKey.ID())
 	}
 
@@ -407,5 +408,70 @@ func TestVerifierAndDSSE_D5(t *testing.T) {
 	// Nil KeySet in NewVerifier.
 	if _, err := signature.NewVerifier(nil); !errors.Is(err, signature.ErrEmptyKeySet) {
 		t.Fatalf("expected ErrEmptyKeySet from NewVerifier(nil), got %v", err)
+	}
+}
+
+func TestKeyMaterialIsImmutableAndIDMatchesProtocol(t *testing.T) {
+	t.Parallel()
+	for _, alg := range []signature.Algorithm{signature.AlgEd25519, signature.AlgECDSAP256} {
+		t.Run(string(alg), func(t *testing.T) {
+			var signer crypto.Signer
+			if alg == signature.AlgEd25519 {
+				_, key, err := ed25519.GenerateKey(rand.Reader)
+				if err != nil {
+					t.Fatal(err)
+				}
+				signer = key
+			} else {
+				key, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
+				if err != nil {
+					t.Fatal(err)
+				}
+				signer = key
+			}
+			original := signer.Public()
+			der, err := x509.MarshalPKIXPublicKey(original)
+			if err != nil {
+				t.Fatal(err)
+			}
+			digest := sha256.Sum256(der)
+			key, err := signature.NewKey(original)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if key.ID() != fmt.Sprintf("%x", digest[:16]) {
+				t.Fatalf("nonconforming key ID: %s", key.ID())
+			}
+			ks, err := signature.NewKeySet(key)
+			if err != nil {
+				t.Fatal(err)
+			}
+			now := time.Now().UTC()
+			envelope := signEnvelope(t, signer, key, sampleManifest(now))
+			mutate := func(pub crypto.PublicKey) {
+				switch k := pub.(type) {
+				case ed25519.PublicKey:
+					clear(k)
+				case *ecdsa.PublicKey:
+					k.X.SetInt64(0)
+					k.Y.SetInt64(0)
+				}
+			}
+			mutate(original)
+			mutate(key.PublicKey())
+			found, ok := ks.Lookup(key.ID())
+			if !ok {
+				t.Fatal("missing key")
+			}
+			mutate(found.PublicKey())
+			mutate(ks.Keys()[0].PublicKey())
+			verifier, err := signature.NewVerifier(ks)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if _, err := verifier.Verify(t.Context(), envelope); err != nil {
+				t.Fatalf("mutation changed verification: %v", err)
+			}
+		})
 	}
 }

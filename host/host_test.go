@@ -68,7 +68,7 @@ func newFakeOpener() *fakeOpener {
 	}
 }
 
-func (o *fakeOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 string) (proteus.Opened, error) {
+func (o *fakeOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 string, _ int64) (proteus.Opened, error) {
 	if err := ctx.Err(); err != nil {
 		return proteus.Opened{}, err
 	}
@@ -849,7 +849,7 @@ func TestUnsignedAdmissionSymbolErrorsAndOptionValidation(t *testing.T) {
 	mgr, err := host.New(src, opener,
 		host.WithUnsigned(proteus.UnsignedAllow),
 		host.WithRevoked(revHash),
-		host.WithMinVersions(map[string]string{"ulow": "1.0.0", "upointers": "1.0.0"}),
+		host.WithMinVersions(map[string]string{"ulow": "1.0.0", "upointers": "1.0.0-rc1"}),
 		host.WithCloseTimeout(time.Second),
 		host.WithHealthTimeout(time.Second),
 		host.WithNow(time.Now),

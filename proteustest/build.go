@@ -6,40 +6,31 @@ package proteustest
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/hex"
 	"fmt"
-	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"runtime/debug"
 	"testing"
-
-	"github.com/altessa-s/go-atlas-core/io/files"
 )
 
 const (
-	pluginFilePerm     = 0o600
-	pluginCacheDirPerm = 0o700
-	cacheDigestLen     = 24
+	pluginFilePerm = 0o600
 )
 
 // BuildPlugin compiles the Go plugin package at pkgDir into a shared object
 // (`.so`) using `go build -buildmode=plugin`, mirroring `-race` and `-cover`
-// settings from the running test binary. Built artifacts are cached by source
-// digest and build flags in the system temp directory and copied into
-// `tb.TempDir()` with mode `0600` so each test operates on an isolated file.
+// settings from the running test binary. Each invocation builds a fresh output
+// in tb.TempDir(); Go's build cache tracks the complete dependency graph.
 //
 // BuildPlugin calls `tb.Skip` on platforms where Go plugins are unsupported
 // (such as Windows or when CGO_ENABLED=0).
 func BuildPlugin(tb testing.TB, pkgDir string) string {
 	tb.Helper()
-	if runtime.GOOS == "windows" {
-		tb.Skip("Go plugins (-buildmode=plugin) are not supported on Windows")
+	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" && runtime.GOOS != "freebsd" {
+		tb.Skip("Go plugins (-buildmode=plugin) are not supported on this platform")
 	}
-	if os.Getenv("CGO_ENABLED") == "0" {
+	if !cgoEnabled {
 		tb.Skip("Go plugins (-buildmode=plugin) require cgo")
 	}
 
@@ -48,77 +39,15 @@ func BuildPlugin(tb testing.TB, pkgDir string) string {
 		tb.Fatalf("proteustest.BuildPlugin: resolve path %q: %v", pkgDir, err)
 	}
 
-	raceEnabled, coverEnabled := currentBuildFlags()
-	cachePath, err := ensureCachedPlugin(tb.Context(), absDir, raceEnabled, coverEnabled)
-	if err != nil {
-		tb.Fatalf("proteustest.BuildPlugin(%q): %v", pkgDir, err)
-	}
-
-	data, err := readRegularFile(cachePath)
-	if err != nil {
-		tb.Fatalf("proteustest.BuildPlugin: read cached .so %q: %v", cachePath, err)
-	}
+	coverEnabled := testing.CoverMode() != ""
 	outPath := filepath.Join(tb.TempDir(), filepath.Base(absDir)+".so")
-	if err := os.WriteFile(outPath, data, pluginFilePerm); err != nil {
-		tb.Fatalf("proteustest.BuildPlugin: write isolated .so %q: %v", outPath, err)
+	if err := buildPlugin(tb.Context(), absDir, outPath, raceEnabled, coverEnabled); err != nil {
+		tb.Fatalf("proteustest.BuildPlugin(%q): %v", pkgDir, err)
 	}
 	return outPath
 }
 
-func currentBuildFlags() (raceEnabled, coverEnabled bool) {
-	info, ok := debug.ReadBuildInfo()
-	if !ok {
-		return false, false
-	}
-	for _, s := range info.Settings {
-		switch s.Key {
-		case "-race":
-			raceEnabled = s.Value == "true"
-		case "-cover":
-			coverEnabled = s.Value == "true"
-		}
-	}
-	return raceEnabled, coverEnabled
-}
-
-func ensureCachedPlugin(ctx context.Context, absDir string, raceEnabled, coverEnabled bool) (string, error) {
-	entries, err := os.ReadDir(absDir)
-	if err != nil {
-		return "", fmt.Errorf("read dir %q: %w", absDir, err)
-	}
-	h := sha256.New()
-	_, _ = fmt.Fprintf(h, "%s|%s|%s/%s|race=%t|cover=%t\n",
-		absDir, runtime.Version(), runtime.GOOS, runtime.GOARCH, raceEnabled, coverEnabled)
-	for _, e := range entries {
-		if e.IsDir() || filepath.Ext(e.Name()) != ".go" {
-			continue
-		}
-		src, readErr := readRegularFile(filepath.Join(absDir, e.Name()))
-		if readErr != nil {
-			return "", fmt.Errorf("read %q: %w", e.Name(), readErr)
-		}
-		_, _ = h.Write([]byte(e.Name()))
-		_, _ = h.Write(src)
-	}
-	digest := hex.EncodeToString(h.Sum(nil))[:cacheDigestLen]
-
-	cacheDir := filepath.Join(os.TempDir(), "proteustest-plugin-cache")
-	if mkdirErr := os.MkdirAll(cacheDir, pluginCacheDirPerm); mkdirErr != nil {
-		return "", fmt.Errorf("create cache dir: %w", mkdirErr)
-	}
-	cachedSO := filepath.Join(cacheDir, filepath.Base(absDir)+"-"+digest+".so")
-	if info, statErr := os.Stat(cachedSO); statErr == nil && info.Size() > 0 {
-		return cachedSO, nil
-	}
-
-	tmpFile, err := os.CreateTemp(cacheDir, ".build-*.so")
-	if err != nil {
-		return "", fmt.Errorf("create temp build output: %w", err)
-	}
-	tmpSO := tmpFile.Name()
-	_ = tmpFile.Close()
-	defer func() { _ = os.Remove(tmpSO) }()
-
+func buildPlugin(ctx context.Context, absDir, outPath string, raceEnabled, coverEnabled bool) error {
 	args := []string{"build", "-buildmode=plugin"}
 	if raceEnabled {
 		args = append(args, "-race")
@@ -126,29 +55,12 @@ func ensureCachedPlugin(ctx context.Context, absDir string, raceEnabled, coverEn
 	if coverEnabled {
 		args = append(args, "-cover")
 	}
-	args = append(args, "-o", tmpSO, ".")
-
+	args = append(args, "-o", outPath, ".")
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = absDir
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
 	output, err := cmd.CombinedOutput()
 	if err != nil {
-		return "", fmt.Errorf("go %v failed: %w\n%s", args, err, string(output))
+		return fmt.Errorf("go %v failed: %w\n%s", args, err, output)
 	}
-	if chmodErr := os.Chmod(tmpSO, pluginFilePerm); chmodErr != nil {
-		return "", fmt.Errorf("chmod built plugin: %w", chmodErr)
-	}
-	if renameErr := os.Rename(tmpSO, cachedSO); renameErr != nil {
-		return "", fmt.Errorf("rename cached plugin: %w", renameErr)
-	}
-	return cachedSO, nil
-}
-
-func readRegularFile(path string) ([]byte, error) {
-	f, err := files.OpenRegular(path)
-	if err != nil {
-		return nil, err
-	}
-	defer func() { _ = f.Close() }()
-	return io.ReadAll(f)
+	return os.Chmod(outPath, pluginFilePerm)
 }

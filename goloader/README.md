@@ -13,3 +13,9 @@ Package `goloader` implements `proteus.Opener` over the Go standard library `plu
   subsequent attempts (fixes Defect 1).
 - **Content-Addressed Handle Cache**: Caches opened plugin handles by SHA-256 so updated plugin binaries with new content hashes open from
   distinct snapshot paths.
+
+All real openers share one process-wide cache by digest, including terminal package-init failures.
+Injected `WithOpenFunc` loaders have isolated caches. Both the signed digest and positive signed size
+are checked before the low-level loader executes. Temporary snapshot/storage failures are retryable;
+`Opened.ContentFailure` identifies terminal loader failures attributable to verified bytes.
+Snapshots are unlinked after the loader returns on success or failure; cached handles remain mapped.

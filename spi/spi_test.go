@@ -222,3 +222,29 @@ func TestGuard(t *testing.T) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 }
+
+func TestMajorZeroAndMinorOnly(t *testing.T) {
+	t.Parallel()
+	for _, tc := range []struct {
+		name         string
+		opts         []spi.Option
+		major, minor int
+		want         bool
+	}{
+		{"zero accepted", []spi.Option{spi.WithMajor(0)}, 0, 0, true},
+		{"zero enforced", []spi.Option{spi.WithMajor(0)}, 1, 0, false},
+		{"minor rejected", []spi.Option{spi.WithMinMinor(2)}, 9, 1, false},
+		{"minor accepted", []spi.Option{spi.WithMinMinor(2)}, 9, 2, true},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			p := makePlugin("p", fakeSymbols{"Greeter": &greeterImpl{}, "GreeterSPIVersion": sdk.SPIVersion{Major: tc.major, Minor: tc.minor}})
+			count := 0
+			for range spi.Providers[Greeter](&fakeRegistry{plugins: []*proteus.Plugin{p}}, "Greeter", tc.opts...) {
+				count++
+			}
+			if (count == 1) != tc.want {
+				t.Fatalf("provider count: %d", count)
+			}
+		})
+	}
+}

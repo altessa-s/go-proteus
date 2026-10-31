@@ -65,7 +65,7 @@ func TestPackageInitPanicContainedAndCached_D1(t *testing.T) {
 	cand, expectedHash := makeCandidate("panic.so", []byte("panic-plugin-bytes"))
 
 	// First Open: recovers panic and returns ErrPanicked.
-	opened1, err1 := opener.Open(context.Background(), cand, expectedHash)
+	opened1, err1 := opener.Open(context.Background(), cand, expectedHash, 0)
 	if !errors.Is(err1, proteus.ErrPanicked) {
 		t.Fatalf("expected ErrPanicked on package init panic, got %v", err1)
 	}
@@ -74,7 +74,7 @@ func TestPackageInitPanicContainedAndCached_D1(t *testing.T) {
 	}
 
 	// Second Open for the same SHA-256: returns cached ErrPanicked without calling openFn again.
-	_, err2 := opener.Open(context.Background(), cand, expectedHash)
+	_, err2 := opener.Open(context.Background(), cand, expectedHash, 0)
 	if !errors.Is(err2, proteus.ErrPanicked) {
 		t.Fatalf("expected cached ErrPanicked on second open, got %v", err2)
 	}
@@ -108,7 +108,7 @@ func TestStreamingSnapshotAndTOCTOUDetection_D14(t *testing.T) {
 	cand, expectedHash := makeCandidate("good.so", []byte("verified-plugin-payload"))
 
 	// Open and cache hit.
-	res1, err := opener.Open(context.Background(), cand, expectedHash)
+	res1, err := opener.Open(context.Background(), cand, expectedHash, 0)
 	if err != nil {
 		t.Fatalf("first Open failed: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestStreamingSnapshotAndTOCTOUDetection_D14(t *testing.T) {
 		t.Fatalf("unexpected Lookup result: %v, %v", val, err)
 	}
 
-	res2, err := opener.Open(context.Background(), cand, expectedHash)
+	res2, err := opener.Open(context.Background(), cand, expectedHash, 0)
 	if err != nil || res2.SHA256 != expectedHash {
 		t.Fatalf("second Open failed: %v", err)
 	}
@@ -130,7 +130,7 @@ func TestStreamingSnapshotAndTOCTOUDetection_D14(t *testing.T) {
 
 	// Manifest SHA-256 mismatch rejected before openFn.
 	badCand, _ := makeCandidate("mismatch.so", []byte("different-bytes"))
-	_, mmErr := opener.Open(context.Background(), badCand, expectedHash)
+	_, mmErr := opener.Open(context.Background(), badCand, expectedHash, 0)
 	if !errors.Is(mmErr, proteus.ErrManifestMismatch) {
 		t.Fatalf("expected ErrManifestMismatch, got %v", mmErr)
 	}
@@ -153,7 +153,7 @@ func TestStreamingSnapshotAndTOCTOUDetection_D14(t *testing.T) {
 		t.Fatal(err)
 	}
 	tamperCand, tamperHash := makeCandidate("tamper.so", []byte("original-bytes"))
-	if _, err := tamperOpener.Open(context.Background(), tamperCand, tamperHash); !errors.Is(err, proteus.ErrSnapshotModified) {
+	if _, err := tamperOpener.Open(context.Background(), tamperCand, tamperHash, 0); !errors.Is(err, proteus.ErrSnapshotModified) {
 		t.Fatalf("expected ErrSnapshotModified on TOCTOU tamper, got %v", err)
 	}
 }
@@ -196,7 +196,7 @@ func TestWorkDirPermissionsLimitsAndDefaultOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	bigCand, _ := makeCandidate("big.so", []byte("0123456789abcdef"))
-	if _, err := limitOpener.Open(context.Background(), bigCand, ""); !errors.Is(err, coreio.ErrReadLimitExceeded) {
+	if _, err := limitOpener.Open(context.Background(), bigCand, "", 0); !errors.Is(err, coreio.ErrReadLimitExceeded) {
 		t.Fatalf("expected ErrReadLimitExceeded, got %v", err)
 	}
 	streamBigCand := proteus.Candidate{
@@ -208,7 +208,7 @@ func TestWorkDirPermissionsLimitsAndDefaultOpen(t *testing.T) {
 			}, nil
 		},
 	}
-	if _, err := limitOpener.Open(context.Background(), streamBigCand, ""); !errors.Is(err, coreio.ErrReadLimitExceeded) {
+	if _, err := limitOpener.Open(context.Background(), streamBigCand, "", 0); !errors.Is(err, coreio.ErrReadLimitExceeded) {
 		t.Fatalf("expected stream ErrReadLimitExceeded, got %v", err)
 	}
 	openErrCand := proteus.Candidate{
@@ -217,17 +217,17 @@ func TestWorkDirPermissionsLimitsAndDefaultOpen(t *testing.T) {
 			return proteus.Artifact{}, errors.New("open failed")
 		},
 	}
-	if _, err := limitOpener.Open(context.Background(), openErrCand, ""); err == nil {
+	if _, err := limitOpener.Open(context.Background(), openErrCand, "", 0); err == nil {
 		t.Fatal("expected error when Candidate.Open fails")
 	}
 
 	// Nil candidate Open function and cancelled context.
-	if _, err := limitOpener.Open(context.Background(), proteus.Candidate{ID: "nil"}, ""); err == nil {
+	if _, err := limitOpener.Open(context.Background(), proteus.Candidate{ID: "nil"}, "", 0); err == nil {
 		t.Fatal("expected error for nil Candidate.Open")
 	}
 	cctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	if _, err := limitOpener.Open(cctx, bigCand, ""); !errors.Is(err, context.Canceled) {
+	if _, err := limitOpener.Open(cctx, bigCand, "", 0); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
 
@@ -238,7 +238,59 @@ func TestWorkDirPermissionsLimitsAndDefaultOpen(t *testing.T) {
 		t.Fatal(err)
 	}
 	notSO, notSOHash := makeCandidate("not-a-plugin.so", []byte("not-an-elf-or-macho"))
-	if _, err := defaultOpener.Open(context.Background(), notSO, notSOHash); err == nil {
+	if _, err := defaultOpener.Open(context.Background(), notSO, notSOHash, 0); err == nil {
 		t.Fatal("expected error from default plugin.Open on non-plugin bytes")
+	}
+}
+
+func TestSizeCheckedBeforeLoaderAndSnapshotsRemoved(t *testing.T) {
+	t.Parallel()
+	cand, digest := makeCandidate("size", []byte("payload"))
+	calls := 0
+	dir := t.TempDir()
+	opener, err := goloader.New(dir, goloader.WithOpenFunc(func(context.Context, string) (proteus.Symbols, error) { calls++; return stubSymbols{}, nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := opener.Open(t.Context(), cand, digest, 99); !errors.Is(err, proteus.ErrManifestMismatch) {
+		t.Fatalf("size mismatch: %v", err)
+	}
+	if calls != 0 {
+		t.Fatal("executed wrong-size artifact")
+	}
+	if _, err := opener.Open(t.Context(), cand, digest, 7); err != nil {
+		t.Fatal(err)
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil || len(entries) != 0 {
+		t.Fatalf("snapshots leaked: %v %v", entries, err)
+	}
+}
+
+func TestRenameFailureIsRetryable(t *testing.T) {
+	t.Parallel()
+	cand, digest := makeCandidate("retry", []byte("retry rename"))
+	dir := t.TempDir()
+	blocker := filepath.Join(dir, digest+".so")
+	if err := os.Mkdir(blocker, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	calls := 0
+	opener, err := goloader.New(dir, goloader.WithOpenFunc(func(context.Context, string) (proteus.Symbols, error) { calls++; return stubSymbols{}, nil }))
+	if err != nil {
+		t.Fatal(err)
+	}
+	opened, err := opener.Open(t.Context(), cand, digest, 0)
+	if err == nil || opened.ContentFailure {
+		t.Fatalf("storage failure classified as content: %+v %v", opened, err)
+	}
+	if err := os.Remove(blocker); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := opener.Open(t.Context(), cand, digest, 0); err != nil {
+		t.Fatal(err)
+	}
+	if calls != 1 {
+		t.Fatalf("loader calls: %d", calls)
 	}
 }

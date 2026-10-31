@@ -10,34 +10,30 @@ import (
 	"github.com/altessa-s/go-proteus"
 )
 
+// processHandles retains handles and terminal loader failures for the process lifetime.
+var processHandles = newHandleCache()
+
 type cacheEntry struct {
-	once    sync.Once
 	symbols proteus.Symbols
 	err     error
 }
 
 type handleCache struct {
 	mu      sync.Mutex
-	entries map[string]*cacheEntry
+	entries map[string]cacheEntry
 }
 
-func newHandleCache() *handleCache {
-	return &handleCache{
-		entries: make(map[string]*cacheEntry),
-	}
-}
+func newHandleCache() *handleCache { return &handleCache{entries: make(map[string]cacheEntry)} }
 
-func (c *handleCache) getOrOpen(sha256 string, fn func() (proteus.Symbols, error)) (proteus.Symbols, error) {
+func (c *handleCache) getOrOpen(digest string, fn func() (proteus.Symbols, bool, error)) (proteus.Symbols, bool, error) {
 	c.mu.Lock()
-	entry, ok := c.entries[sha256]
-	if !ok {
-		entry = &cacheEntry{}
-		c.entries[sha256] = entry
+	defer c.mu.Unlock()
+	if entry, ok := c.entries[digest]; ok {
+		return entry.symbols, true, entry.err
 	}
-	c.mu.Unlock()
-
-	entry.once.Do(func() {
-		entry.symbols, entry.err = fn()
-	})
-	return entry.symbols, entry.err
+	syms, terminal, err := fn()
+	if terminal {
+		c.entries[digest] = cacheEntry{symbols: syms, err: err}
+	}
+	return syms, terminal, err
 }

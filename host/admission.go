@@ -6,7 +6,6 @@ package host
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 
@@ -20,7 +19,7 @@ func (m *Manager) admitCandidate(ctx context.Context, cand proteus.Candidate, re
 		return
 	}
 	if len(cand.Signature) == 0 {
-		if m.unsigned == proteus.UnsignedReject {
+		if m.unsigned != proteus.UnsignedWarn && m.unsigned != proteus.UnsignedAllow {
 			err := fmt.Errorf("%w: %s has no detached .sig envelope", proteus.ErrSignatureMissing, cand.ID)
 			report.Failed = append(report.Failed, proteus.CandidateReport{
 				Source:   cand.ID,
@@ -66,7 +65,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 	ver := manifest.PluginVer
 
 	// Skip if this exact content hash is already loaded or was explicitly unloaded in this process (Defect 10).
-	if m.isHashLoadedOrUnloadedLocked(hash) {
+	if m.isHashLoadedOrUnloaded(hash) {
 		skipErr := fmt.Errorf("%w: %s (%s)", proteus.ErrAlreadyLoaded, name, hash)
 		report.Skipped = append(report.Skipped, proteus.CandidateReport{
 			Source: cand.ID,
@@ -150,7 +149,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 	}
 
 	// Defect 11: Check duplicate plugin name collision before opening or running Init.
-	if m.isNameLoadedLocked(name) {
+	if m.isNameLoaded(name) {
 		dupErr := fmt.Errorf("%w: %s", proteus.ErrAlreadyLoaded, name)
 		report.Failed = append(report.Failed, proteus.CandidateReport{
 			Source: cand.ID,
@@ -183,9 +182,9 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 	}
 
 	// Open the candidate via Opener.
-	opened, err := m.opener.Open(ctx, cand, hash)
+	opened, err := m.opener.Open(ctx, cand, hash, manifest.Size)
 	if err != nil {
-		if errors.Is(err, proteus.ErrSnapshotModified) {
+		if !opened.ContentFailure {
 			report.Failed = append(report.Failed, proteus.CandidateReport{
 				Source: cand.ID,
 				Name:   name,
@@ -230,7 +229,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 
 	resolved, err := resolvePluginSymbols(opened.Symbols)
 	if err != nil {
-		m.recordFailedPluginLocked(sdk.Descriptor{Name: name, Version: ver}, manifest, cand.ID, hash, err)
+		m.recordFailedPlugin(sdk.Descriptor{Name: name, Version: ver}, manifest, cand.ID, hash, err)
 		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, err, report)
 		return
 	}
@@ -244,7 +243,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 			name,
 			ver,
 		)
-		m.recordFailedPluginLocked(resolved.descriptor, manifest, cand.ID, hash, mmErr)
+		m.recordFailedPlugin(sdk.Descriptor{Name: name, Version: ver}, manifest, cand.ID, hash, mmErr)
 		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, mmErr, report)
 		return
 	}
@@ -259,10 +258,10 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 		)
 	}
 
-	opened, err := m.opener.Open(ctx, cand, "")
+	opened, err := m.opener.Open(ctx, cand, "", 0)
 	if err != nil {
 		// Defect 16: Only quarantine when a valid content hash was computed and the failure is not snapshot storage tamper.
-		if proteus.IsValidSHA256Hex(opened.SHA256) && !errors.Is(err, proteus.ErrSnapshotModified) {
+		if proteus.IsValidSHA256Hex(opened.SHA256) && opened.ContentFailure {
 			m.quarantineAndFail(cand.ID, "", "", opened.SHA256, "", true, err, report)
 			return
 		}
@@ -284,7 +283,7 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 
 	hash := opened.SHA256
 
-	if m.isHashLoadedOrUnloadedLocked(hash) {
+	if m.isHashLoadedOrUnloaded(hash) {
 		skipErr := fmt.Errorf("%w: %s (%s)", proteus.ErrAlreadyLoaded, cand.ID, hash)
 		report.Skipped = append(report.Skipped, proteus.CandidateReport{
 			Source:   cand.ID,
@@ -358,7 +357,7 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 	}
 
 	// Defect 11: Check duplicate plugin name collision before running Init.
-	if m.isNameLoadedLocked(name) {
+	if m.isNameLoaded(name) {
 		dupErr := fmt.Errorf("%w: %s", proteus.ErrAlreadyLoaded, name)
 		report.Failed = append(report.Failed, proteus.CandidateReport{
 			Source:   cand.ID,
@@ -380,7 +379,7 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 	}
 
 	if err := m.checkMinVersion(name, ver); err != nil {
-		m.recordFailedPluginLocked(resolved.descriptor, proteus.Manifest{}, cand.ID, hash, err)
+		m.recordFailedPlugin(resolved.descriptor, proteus.Manifest{}, cand.ID, hash, err)
 		m.quarantineAndFail(cand.ID, name, ver, hash, "", true, err, report)
 		return
 	}
@@ -414,7 +413,11 @@ func (m *Manager) finalizeAdmission(
 	})
 
 	start := m.now()
-	initErr := runWatchdog(ctx, m.initTimeout, desc.Name, sdk.SymbolInit, proteus.ErrInitFailed, m.logger, resolved.initFn)
+	release, initErr := acquireImage(ctx, opened, func() error {
+		return runWatchdog(ctx, m.initTimeout, desc.Name, sdk.SymbolInit, proteus.ErrInitFailed, m.logger, resolved.initFn)
+	}, func(closeCtx context.Context) error {
+		return runWatchdog(closeCtx, m.closeTimeout, desc.Name, sdk.SymbolClose, nil, m.logger, resolved.closeFn)
+	})
 	initDuration := m.now().Sub(start)
 
 	m.observer.Initialized(proteus.InitEvent{
@@ -426,7 +429,7 @@ func (m *Manager) finalizeAdmission(
 
 	now := m.now().UTC()
 	if initErr != nil {
-		m.recordFailedPluginLocked(desc, manifest, sourceID, hash, initErr)
+		m.recordFailedPlugin(desc, manifest, sourceID, hash, initErr)
 		if qEntry, added := m.quarantine.add(sourceID, hash, initErr, now); added {
 			m.observer.Quarantined(qEntry)
 		}
@@ -440,11 +443,19 @@ func (m *Manager) finalizeAdmission(
 		return
 	}
 
-	plugin := proteus.NewPlugin(desc, manifest, sourceID, hash, now, opened.Symbols)
+	plugin, setState := proteus.NewManagedPlugin(desc, manifest, sourceID, hash, now, opened.Symbols)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for key, failed := range m.failed {
+		if failed.Source() == sourceID {
+			delete(m.failed, key)
+		}
+	}
 	delete(m.failed, desc.Name)
 	m.ready[desc.Name] = readyPlugin{
 		plugin:   plugin,
-		closeFn:  resolved.closeFn,
+		release:  release,
+		setState: setState,
 		healthFn: resolved.healthFn,
 	}
 	m.loadedHashes[hash] = desc.Name
@@ -482,21 +493,34 @@ func (m *Manager) quarantineAndFail(
 	})
 }
 
-func (m *Manager) recordFailedPluginLocked(
+func (m *Manager) recordFailedPlugin(
 	desc sdk.Descriptor,
 	manifest proteus.Manifest,
 	sourceID string,
 	hash string,
 	err error,
 ) {
+	now := m.now().UTC()
+	m.mu.Lock()
+	defer m.mu.Unlock()
 	if desc.Name == "" {
-		return
+		desc.Name = "source:" + sourceID
 	}
 	// Do not overwrite an already-ready plugin if a duplicate candidate failed.
 	if _, active := m.ready[desc.Name]; active {
 		return
 	}
-	m.failed[desc.Name] = proteus.NewFailedPlugin(desc, manifest, sourceID, hash, m.now().UTC(), err)
+	for key, previous := range m.failed {
+		if previous.Source() != sourceID {
+			continue
+		}
+		if key == desc.Name && desc.Version == "" {
+			desc = previous.Descriptor()
+			manifest, _ = previous.Manifest()
+		}
+		delete(m.failed, key)
+	}
+	m.failed[desc.Name] = proteus.NewFailedPlugin(desc, manifest, sourceID, hash, now, err)
 }
 
 func (m *Manager) checkHostMajor(pluginName string, pluginHostMajor int) error {

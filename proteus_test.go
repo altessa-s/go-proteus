@@ -106,7 +106,7 @@ func TestPluginLifecycleAndLookup(t *testing.T) {
 	}
 
 	syms := mapSymbols{"Provider": "ok-provider"}
-	p := proteus.NewPlugin(desc, manifest, "auth.so", hash, now, syms)
+	p, setState := proteus.NewManagedPlugin(desc, manifest, "auth.so", hash, now, syms)
 
 	if p.Name() != "auth" || p.Version() != "2.0.0" || p.Description() != "Auth plugin" {
 		t.Fatalf("unexpected plugin identity: %s %s %s", p.Name(), p.Version(), p.Description())
@@ -148,13 +148,13 @@ func TestPluginLifecycleAndLookup(t *testing.T) {
 	}
 
 	failErr := errors.New("boom")
-	p.MarkFailed(failErr)
+	setState(proteus.StateFailed, failErr)
 	if p.State() != proteus.StateFailed || p.State().String() != "failed" || !errors.Is(p.Err(), failErr) {
 		t.Fatalf("unexpected state after MarkFailed: %v, err=%v", p.State(), p.Err())
 	}
 
 	unloadErr := errors.New("close failed")
-	p.MarkUnloaded(unloadErr)
+	setState(proteus.StateUnloaded, unloadErr)
 	if p.State() != proteus.StateUnloaded || p.State().String() != "unloaded" || !errors.Is(p.Err(), unloadErr) {
 		t.Fatalf("unexpected state after MarkUnloaded: %v, err=%v", p.State(), p.Err())
 	}

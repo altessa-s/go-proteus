@@ -6,6 +6,7 @@ package main
 
 import (
 	"context"
+	"sync/atomic"
 
 	"github.com/altessa-s/go-proteus/sdk"
 )
@@ -42,12 +43,17 @@ func (goodGreeter) Greet(name string) string {
 }
 
 // Init initializes the fixture plugin.
-func Init(ctx context.Context) error { return ctx.Err() }
+func Init(ctx context.Context) error { initCalls.Add(1); return ctx.Err() }
 
 // Close shuts down the fixture plugin.
-func Close(ctx context.Context) error { return ctx.Err() }
+func Close(ctx context.Context) error { closeCalls.Add(1); return ctx.Err() }
 
 // HealthCheck reports healthy status for the fixture plugin.
 func HealthCheck(ctx context.Context) error { return ctx.Err() }
 
 func main() {}
+
+var initCalls, closeCalls atomic.Int32
+
+// LifecycleCounts reports calls for integration assertions.
+func LifecycleCounts() (int32, int32) { return initCalls.Load(), closeCalls.Load() }

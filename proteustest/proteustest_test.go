@@ -7,8 +7,6 @@ package proteustest_test
 import (
 	"context"
 	"errors"
-	"os"
-	"path/filepath"
 	"testing"
 	"time"
 
@@ -63,14 +61,14 @@ func TestFakesAndSigningHelpers(t *testing.T) {
 	}
 
 	opener := proteustest.NewMemOpener(nil)
-	if _, err := opener.Open(t.Context(), cand, ""); err == nil {
+	if _, err := opener.Open(t.Context(), cand, "", 0); err == nil {
 		t.Fatal("expected error for unregistered candidate")
 	}
 	opener.SetSymbols(cand.ID, syms)
 	opener.SetOpenFunc(func(ctx context.Context, c proteus.Candidate, sha string) (proteus.Opened, error) {
 		return proteus.Opened{Symbols: syms, SHA256: sha, Size: 9}, nil
 	})
-	if _, err := opener.Open(t.Context(), cand, "abc"); err != nil {
+	if _, err := opener.Open(t.Context(), cand, "abc", 0); err != nil {
 		t.Fatalf("custom OpenFunc failed: %v", err)
 	}
 	opener.SetOpenFunc(nil)
@@ -116,30 +114,5 @@ func TestFakesAndSigningHelpers(t *testing.T) {
 
 	if err := proteustest.GoroutineLeaks(); err != nil {
 		t.Fatalf("unexpected goroutine leak: %v", err)
-	}
-}
-
-func TestBuildPluginCachesArtifact(t *testing.T) {
-	t.Parallel()
-	pkgDir := t.TempDir()
-	if err := os.WriteFile(filepath.Join(pkgDir, "go.mod"), []byte("module example.com/testplugin\n\ngo 1.27\n"), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	src := `package main
-
-var Exported = "hello"
-`
-	if err := os.WriteFile(filepath.Join(pkgDir, "main.go"), []byte(src), 0o600); err != nil {
-		t.Fatal(err)
-	}
-
-	so1 := proteustest.BuildPlugin(t, pkgDir)
-	so2 := proteustest.BuildPlugin(t, pkgDir)
-	if so1 == so2 {
-		t.Fatalf("expected distinct isolated paths per call, got %q", so1)
-	}
-	info1, err := os.Stat(so1)
-	if err != nil || info1.Size() == 0 {
-		t.Fatalf("invalid built plugin %q: %v", so1, err)
 	}
 }

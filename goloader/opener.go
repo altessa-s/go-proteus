@@ -50,9 +50,11 @@ func New(workDir string, opts ...Option) (*Opener, error) {
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxArtifactBytes
 	}
+	cache := newHandleCache()
 	openFn := cfg.openFunc
 	if openFn == nil {
 		openFn = defaultOpenPlugin
+		cache = processHandles
 	}
 
 	if err := ensureSecureWorkDir(cleaned, !cfg.skipPermissionChecks); err != nil {
@@ -65,7 +67,7 @@ func New(workDir string, opts ...Option) (*Opener, error) {
 		checkPermissions: !cfg.skipPermissionChecks,
 		openFn:           openFn,
 		afterWriteHook:   cfg.afterWriteHook,
-		cache:            newHandleCache(),
+		cache:            cache,
 	}, nil
 }
 
@@ -75,7 +77,7 @@ func (o *Opener) WorkDir() string { return o.workDir }
 // Open streams c into a temporary snapshot file while hashing, verifies the digest against
 // verifiedSHA256 when non-empty, re-hashes the snapshot from disk to close TOCTOU windows, and
 // opens (or returns a cached handle for) the shared object.
-func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 string) (proteus.Opened, error) {
+func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 string, verifiedSize int64) (proteus.Opened, error) {
 	if err := ctx.Err(); err != nil {
 		return proteus.Opened{}, err
 	}
@@ -113,7 +115,7 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 		}
 	}()
 
-	if verifiedSHA256 != "" && !strings.EqualFold(streamHash, verifiedSHA256) {
+	if (verifiedSHA256 != "" && !strings.EqualFold(streamHash, verifiedSHA256)) || (verifiedSize > 0 && writtenSize != verifiedSize) {
 		return proteus.Opened{
 			SHA256: streamHash,
 			Size:   writtenSize,
@@ -145,23 +147,26 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 		)
 	}
 
-	syms, err := o.cache.getOrOpen(streamHash, func() (proteus.Symbols, error) {
+	if ctxErr := ctx.Err(); ctxErr != nil {
+		return proteus.Opened{}, ctxErr
+	}
+	syms, terminal, err := o.cache.getOrOpen(streamHash, func() (proteus.Symbols, bool, error) {
 		finalPath := filepath.Join(o.workDir, streamHash+".so")
 		if renameErr := os.Rename(tmpPath, finalPath); renameErr != nil {
-			return nil, fmt.Errorf("goloader: commit snapshot %q: %w", finalPath, renameErr)
+			return nil, false, fmt.Errorf("goloader: commit snapshot %q: %w", finalPath, renameErr)
 		}
 		cleanupTmp = false
-		return invokeOpenSafe(ctx, finalPath, o.openFn)
+		defer func() { _ = os.Remove(finalPath) }()
+		symbols, openErr := invokeOpenSafe(ctx, finalPath, o.openFn)
+		return symbols, !errors.Is(openErr, context.Canceled) && !errors.Is(openErr, context.DeadlineExceeded), openErr
 	})
 	if err != nil {
-		return proteus.Opened{
-			SHA256: streamHash,
-			Size:   writtenSize,
-		}, err
+		return proteus.Opened{SHA256: streamHash, Size: writtenSize, ContentFailure: terminal}, err
 	}
 
 	return proteus.Opened{
 		Symbols: syms,
+		Mapped:  o.cache == processHandles,
 		SHA256:  streamHash,
 		Size:    writtenSize,
 	}, nil

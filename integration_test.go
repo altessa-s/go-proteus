@@ -126,6 +126,58 @@ func TestIntegrationFullPipelineAndSPI(t *testing.T) {
 	if !slices.Equal(skipped, []string{"spi_v2"}) {
 		t.Fatalf("expected spi_v2 skipped by major constraint, got %v", skipped)
 	}
+	// Independent opener instances must share mapped handles and lifecycle ownership.
+	otherOpener, err := goloader.New(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	other, err := host.New(src, otherOpener, host.WithVerifier(verifier))
+	if err != nil {
+		t.Fatal(err)
+	}
+	otherReport, err := other.Load(t.Context())
+	if err != nil || len(otherReport.Loaded) != 3 {
+		t.Fatalf("second manager: %+v %v", otherReport, err)
+	}
+	good, _ := other.Get("good")
+	rawCounts, ok := good.Lookup("LifecycleCounts")
+	counts, valid := rawCounts.(func() (int32, int32))
+	if !ok || !valid {
+		t.Fatal("missing lifecycle counter")
+	}
+	if inits, closes := counts(); inits != 1 || closes != 0 {
+		t.Fatalf("shared lifecycle: %d %d", inits, closes)
+	}
+	if err := mgr.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if p, ok := other.Get("good"); !ok || p.State() != proteus.StateReady {
+		t.Fatal("first Close invalidated second owner")
+	}
+	if _, closes := counts(); closes != 0 {
+		t.Fatal("closed while another owner exists")
+	}
+	if err := other.Close(t.Context()); err != nil {
+		t.Fatal(err)
+	}
+	if inits, closes := counts(); inits != 1 || closes != 1 {
+		t.Fatalf("released lifecycle: %d %d", inits, closes)
+	}
+	recreated, err := host.New(src, otherOpener, host.WithVerifier(verifier))
+	if err != nil {
+		t.Fatal(err)
+	}
+	retry, err := recreated.Load(t.Context())
+	if err != nil || len(retry.Loaded) != 0 || !errors.Is(retry.Err(), proteus.ErrAlreadyLoaded) {
+		t.Fatalf("recreated manager: %+v %v", retry, err)
+	}
+	for _, dir := range []string{snapDir, otherOpener.WorkDir()} {
+		entries, err := os.ReadDir(dir)
+		if err != nil || len(entries) != 0 {
+			t.Fatalf("snapshot leak: %v %v", entries, err)
+		}
+	}
+
 }
 
 func TestIntegrationFaultIsolation_D1_D3_D9(t *testing.T) {
@@ -222,4 +274,24 @@ func TestIntegrationFaultIsolation_D1_D3_D9(t *testing.T) {
 	if len(mgr.Quarantined()) != 5 {
 		t.Fatalf("expected all 5 faulty plugins quarantined, got %d", len(mgr.Quarantined()))
 	}
+	if got := mgr.Health(t.Context()); got.Status != proteus.StatusNotServing || got.Failed != 5 {
+		t.Fatalf("failed admission health: %+v", got)
+	}
+	// A package-init panic leaves stdlib's load channel unfinished. A new opener
+	// must return the cached failure without entering plugin.Open again.
+	candidates, err := src.Candidates(t.Context())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, dir := range []string{snapDir, t.TempDir()} {
+		retryOpener, err := goloader.New(dir)
+		if err != nil {
+			t.Fatal(err)
+		}
+		opened, err := retryOpener.Open(t.Context(), candidates[0], "", 0)
+		if !errors.Is(err, proteus.ErrPanicked) || !opened.ContentFailure {
+			t.Fatalf("package-init retry: %+v %v", opened, err)
+		}
+	}
+
 }

@@ -163,7 +163,7 @@ func NewFailedPlugin(
 	err error,
 ) *Plugin {
 	p := NewPlugin(desc, manifest, source, sha256, loadedAt, nil)
-	p.MarkFailed(err)
+	p.setState(StateFailed, err)
 	return p
 }
 
@@ -214,20 +214,18 @@ func (p *Plugin) Err() error {
 	return nil
 }
 
-// MarkFailed transitions the plugin to [StateFailed] and records err.
-func (p *Plugin) MarkFailed(err error) {
-	if err != nil {
-		p.lastErr.Store(&errBox{err: err})
-	}
-	p.state.Store(int32(StateFailed))
+// NewManagedPlugin returns a plugin and its exclusive lifecycle mutation capability.
+// Managers retain the capability privately; registry consumers receive only the plugin.
+func NewManagedPlugin(desc sdk.Descriptor, manifest Manifest, source, digest string, at time.Time, symbols Symbols) (*Plugin, func(State, error)) {
+	p := NewPlugin(desc, manifest, source, digest, at, symbols)
+	return p, p.setState
 }
 
-// MarkUnloaded transitions the plugin to [StateUnloaded]. If err is non-nil, it is recorded.
-func (p *Plugin) MarkUnloaded(err error) {
+func (p *Plugin) setState(state State, err error) {
 	if err != nil {
 		p.lastErr.Store(&errBox{err: err})
 	}
-	p.state.Store(int32(StateUnloaded))
+	p.state.Store(int32(state))
 }
 
 // Lookup resolves and caches a symbol exported by the plugin.

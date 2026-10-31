@@ -27,7 +27,7 @@ type Envelope struct {
 
 // Entry is a single signature inside a DSSE [Envelope].
 type Entry struct {
-	// KeyID is the 64-character lowercase hex SHA-256 PKIX identifier of the signing key.
+	// KeyID is the 32-character lowercase hex identifier (first 16 bytes of SHA-256 of SPKI DER) of the signing key.
 	KeyID string `json:"keyid"`
 
 	// Sig is the standard base64 encoding of the raw Ed25519 or ASN.1 DER ECDSA P-256 signature.

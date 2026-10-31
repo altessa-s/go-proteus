@@ -94,7 +94,7 @@ func Providers[T any](reg Registry, contract string, opts ...Option) iter.Seq2[T
 }
 
 func checkVersion(p *proteus.Plugin, contract, symName, verSymName string, cfg *options) bool {
-	if cfg.major <= 0 && !cfg.requireVersion {
+	if cfg.major < 0 && cfg.minMinor < 0 && !cfg.requireVersion {
 		return true
 	}
 	rawVer, ok := p.Lookup(verSymName)
@@ -154,7 +154,7 @@ func checkVersion(p *proteus.Plugin, contract, symName, verSymName string, cfg *
 		return false
 	}
 
-	if (cfg.major > 0 && ver.Major != cfg.major) || ver.Minor < cfg.minMinor {
+	if (cfg.major >= 0 && ver.Major != cfg.major) || ver.Minor < cfg.minMinor {
 		emitSkip(cfg, SkipEvent{
 			Plugin:   p,
 			Contract: contract,

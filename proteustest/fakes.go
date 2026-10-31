@@ -113,7 +113,7 @@ func (o *MemOpener) SetOpenFunc(fn func(context.Context, proteus.Candidate, stri
 
 // Open streams the candidate artifact, verifies its digest against verifiedSHA256
 // when non-empty, records the candidate ID, and resolves its symbols.
-func (o *MemOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 string) (proteus.Opened, error) {
+func (o *MemOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 string, verifiedSize int64) (proteus.Opened, error) {
 	o.mu.Lock()
 	o.opened = append(o.opened, c.ID)
 	if o.counts == nil {
@@ -145,7 +145,7 @@ func (o *MemOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA25
 	}
 	sum := sha256.Sum256(data)
 	digest := hex.EncodeToString(sum[:])
-	if verifiedSHA256 != "" && digest != verifiedSHA256 {
+	if (verifiedSHA256 != "" && digest != verifiedSHA256) || (verifiedSize > 0 && int64(len(data)) != verifiedSize) {
 		return proteus.Opened{}, fmt.Errorf("%w: digest %s != %s", proteus.ErrManifestMismatch, digest, verifiedSHA256)
 	}
 	return proteus.Opened{

@@ -51,6 +51,12 @@ type Opened struct {
 	// SHA256 is the verified 64-character lowercase hex SHA-256 digest of the opened snapshot.
 	SHA256 string
 
+	// Mapped reports that Symbols belongs to a process-wide mapped image.
+	Mapped bool
+
+	// ContentFailure reports a terminal loader failure attributable to these bytes.
+	ContentFailure bool
+
 	// Size is the verified byte size of the opened snapshot.
 	Size int64
 }
@@ -58,8 +64,8 @@ type Opened struct {
 // Opener materializes a [Candidate] into an in-process [Opened] symbol table.
 type Opener interface {
 	// Open streams the candidate binary, verifies its digest against verifiedSHA256 when non-empty,
-	// and opens the shared object.
-	Open(ctx context.Context, c Candidate, verifiedSHA256 string) (Opened, error)
+	// validates verifiedSize when positive before executing any code, and opens the shared object.
+	Open(ctx context.Context, c Candidate, verifiedSHA256 string, verifiedSize int64) (Opened, error)
 }
 
 // VerifiedManifest pairs a cryptographically verified [Manifest] with the signing key identifier.

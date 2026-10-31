@@ -28,7 +28,7 @@ func BenchmarkOpenerCached(b *testing.B) {
 
 	b.ReportAllocs()
 	for b.Loop() {
-		if _, err := opener.Open(ctx, cand, h); err != nil {
+		if _, err := opener.Open(ctx, cand, h, 0); err != nil {
 			b.Fatal(err)
 		}
 	}

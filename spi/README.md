@@ -14,3 +14,5 @@ for greeter, p := range spi.Providers[Greeter](mgr, "Greeter", spi.WithMajor(1),
 	}
 }
 ```
+
+`WithMajor(0)` explicitly requires major zero. `WithMinMinor(n)` works independently of a major constraint. Internally, -1 denotes an omitted constraint; valid version components are nonnegative.

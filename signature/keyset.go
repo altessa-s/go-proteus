@@ -58,7 +58,7 @@ type Key struct {
 }
 
 // NewKey validates pub against the go-proteus cryptographic policy (Ed25519 or ECDSA P-256 only)
-// and computes its lowercase hex SHA-256 PKIX DER key identifier.
+// and computes its key identifier: the first 16 bytes of SHA-256(SPKI DER), lowercase hex.
 func NewKey(pub crypto.PublicKey) (Key, error) {
 	alg, normalizedPub, err := validatePublicKey(pub)
 	if err != nil {
@@ -70,7 +70,7 @@ func NewKey(pub crypto.PublicKey) (Key, error) {
 	}
 	sum := sha256.Sum256(der)
 	return Key{
-		id:  hex.EncodeToString(sum[:]),
+		id:  hex.EncodeToString(sum[:16]),
 		alg: alg,
 		pub: normalizedPub,
 	}, nil
@@ -91,10 +91,15 @@ func validatePublicKey(pub crypto.PublicKey) (Algorithm, crypto.PublicKey, error
 		if k.Curve != elliptic.P256() {
 			return "", nil, fmt.Errorf("%w: unsupported ecdsa curve (only P-256 is allowed)", ErrKeyPolicy)
 		}
-		if _, err := k.ECDH(); err != nil {
+		encoded, err := k.Bytes()
+		if err != nil {
 			return "", nil, fmt.Errorf("%w: invalid P-256 public key point: %w", ErrKeyPolicy, err)
 		}
-		return AlgECDSAP256, k, nil
+		cloned, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), encoded)
+		if err != nil {
+			return "", nil, fmt.Errorf("%w: copy P-256 public key: %w", ErrKeyPolicy, err)
+		}
+		return AlgECDSAP256, cloned, nil
 	default:
 		return "", nil, fmt.Errorf("%w: unsupported public key type %T (only Ed25519 and ECDSA P-256 are allowed)", ErrKeyPolicy, pub)
 	}
@@ -154,14 +159,17 @@ func (k Key) WithValidity(notBefore, notAfter time.Time) (Key, error) {
 	return k, nil
 }
 
-// ID returns the 64-character lowercase hex SHA-256 PKIX key identifier.
+// ID returns the 32-character lowercase hex SHA-256 PKIX key identifier.
 func (k Key) ID() string { return k.id }
 
 // Algorithm returns the key's [Algorithm].
 func (k Key) Algorithm() Algorithm { return k.alg }
 
-// PublicKey returns the underlying [crypto.PublicKey].
-func (k Key) PublicKey() crypto.PublicKey { return k.pub }
+// PublicKey returns a defensive copy of the [crypto.PublicKey].
+func (k Key) PublicKey() crypto.PublicKey {
+	_, pub, _ := validatePublicKey(k.pub)
+	return pub
+}
 
 // NotBefore returns the optional start of the key's validity window (zero if unbounded).
 func (k Key) NotBefore() time.Time { return k.notBefore }
@@ -219,7 +227,7 @@ func NewKeySet(keys ...Key) (*KeySet, error) {
 	}, nil
 }
 
-// Lookup retrieves a [Key] by its 64-character lowercase hex key identifier.
+// Lookup retrieves a [Key] by its 32-character lowercase hex key identifier.
 func (ks *KeySet) Lookup(keyID string) (Key, bool) {
 	if ks == nil {
 		return Key{}, false

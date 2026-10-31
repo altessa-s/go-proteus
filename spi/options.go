@@ -8,8 +8,8 @@ package spi
 
 type options struct {
 	symbol         string
-	major          int
-	minMinor       int
+	major          int `optgen:"default=-1"`
+	minMinor       int `optgen:"default=-1"`
 	requireVersion bool
 	onSkip         func(SkipEvent)
 	onPanic        func(pluginName string, recovered any, stack []byte)

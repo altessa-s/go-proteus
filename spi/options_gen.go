@@ -70,7 +70,10 @@ func WithSymbol[T interface{ string | *string }](v T) Option {
 
 // defaultOptions returns the default values for options.
 func defaultOptions() *options {
-	return &options{}
+	return &options{
+		major:    -1,
+		minMinor: -1,
+	}
 }
 
 // newOptions creates a new options with the given options.

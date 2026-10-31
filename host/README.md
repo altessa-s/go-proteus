@@ -14,3 +14,22 @@ plugins.
 4. **Bounded `Init`**: Runs optional `Init(ctx)` on a supervised goroutine with `WithInitTimeout` so a blocked plugin cannot stall the host.
 5. **Registry & Quarantine**: Ready plugins enter the active registry (`Get`, `All`, `LookupAll`); failed plugins enter `Failed()` and their
    content SHA-256 is added to quarantine (`Quarantined()`).
+
+## Lifecycle ownership and callbacks
+
+For `Opened.Mapped` images, managers acquire process-wide references keyed by digest. `Init` runs once;
+`Close` runs when the last owner releases. A failed Init or last release is terminal for that image.
+A new manager cannot initialize it again and receives an `ErrAlreadyLoaded`-style admission failure
+after unload. Non-mapped test loaders retain isolated lifecycle behavior.
+
+Discovery and admission are serialized separately from registry reads. Observers and Init hooks may
+call `Get`, `All`, and `Failed`; callbacks must not synchronously initiate another Load, Close, Unload,
+or Quarantine on the same manager, since those operations share admission serialization.
+
+`Quarantine(name)` atomically removes an active entry, records the failed entity and its digest,
+releases ownership, and emits quarantine and registry telemetry. Plugin values expose no lifecycle
+mutators; only their manager retains the mutation capability. Clearing quarantine does not reset a
+terminal mapped image. Admission failures without a trustworthy name use `source:<candidate ID>`.
+Failures remain diagnostic records until a successful admission replaces that source (or name).
+Temporary storage failures appear in `Failed()` and health but do not quarantine the signed digest.
+Minimum versions use semantic-version prerelease precedence; build metadata has no precedence.

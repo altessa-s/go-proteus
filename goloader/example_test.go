@@ -30,7 +30,7 @@ func ExampleOpener() {
 		panic(err)
 	}
 	cand, h := makeCandidate("demo.so", []byte("demo-binary"))
-	opened, err := opener.Open(context.Background(), cand, h)
+	opened, err := opener.Open(context.Background(), cand, h, 0)
 	if err != nil {
 		panic(err)
 	}

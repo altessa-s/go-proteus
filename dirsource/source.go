@@ -169,12 +169,7 @@ func (s *Source) openVerifiedFileInRoot(root *os.Root, name string, maxBytes int
 		return nil, nil, fmt.Errorf("%w: %q is a symlink", proteus.ErrInsecurePermissions, name)
 	}
 
-	var f *os.File
-	if !s.followSymlinks {
-		f, err = files.OpenRegularIn(root, name)
-	} else {
-		f, err = root.Open(name)
-	}
+	f, err := files.OpenRegularIn(root, name)
 	if err != nil {
 		return nil, nil, fmt.Errorf("dirsource: open %q: %w", name, err)
 	}

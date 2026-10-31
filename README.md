@@ -7,7 +7,7 @@ plugins.
 
 - **Fail-Closed Admission Pipeline**: Verifies detached Dead Simple Signing Envelope (DSSE) v1 signatures over a strict JSON v2 manifest
   *before* calling `dlopen` (`plugin.Open`).
-- **Modern Cryptography Policy**: Supports Ed25519 (default) and ECDSA P-256 keys with SHA-256 PKIX key IDs, key validity windows, and
+- **Modern Cryptography Policy**: Supports Ed25519 (default) and ECDSA P-256 keys with 32-character key IDs (first 16 bytes of SHA-256 of SPKI DER), key validity windows, and
   optional manifest expiration (`notAfter`). Rejects RSA and legacy raw `.sig` files.
 - **Confined Filesystem Discovery**: `dirsource` uses `os.Root` (`files.OpenRootDir` and `files.OpenRegularIn`) to prevent symlink escapes,
   FIFO stalls (`O_NONBLOCK`), and group/world-writable plugin files.
