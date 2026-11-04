@@ -20,13 +20,16 @@ import (
 
 func TestFakesAndSigningHelpers(t *testing.T) {
 	t.Parallel()
+
 	now := time.Date(2026, 4, 19, 12, 0, 0, 0, time.UTC)
 
 	_, pubKey, signer := proteustest.MustGenerateKey(t, signature.AlgEd25519)
+
 	ks, err := signature.NewKeySet(pubKey)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	verifier, err := signature.NewVerifier(ks, signature.WithNow(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
@@ -44,9 +47,11 @@ func TestFakesAndSigningHelpers(t *testing.T) {
 
 	src := proteustest.NewMemSource(cand)
 	src.SetError(errors.New("temporary failure"))
+
 	if _, err := src.Candidates(t.Context()); err == nil {
 		t.Fatal("expected error from MemSource")
 	}
+
 	src.SetError(nil)
 	src.SetCandidates(cand)
 
@@ -64,16 +69,20 @@ func TestFakesAndSigningHelpers(t *testing.T) {
 	if _, err := opener.Open(t.Context(), cand, "", 0); err == nil {
 		t.Fatal("expected error for unregistered candidate")
 	}
+
 	opener.SetSymbols(cand.ID, syms)
 	opener.SetOpenFunc(func(ctx context.Context, c proteus.Candidate, sha string) (proteus.Opened, error) {
 		return proteus.Opened{Symbols: syms, SHA256: sha, Size: 9}, nil
 	})
+
 	if _, err := opener.Open(t.Context(), cand, "abc", 0); err != nil {
 		t.Fatalf("custom OpenFunc failed: %v", err)
 	}
+
 	opener.SetOpenFunc(nil)
 
 	obs := proteustest.NewRecordingObserver()
+
 	mgr, err := host.New(
 		src,
 		opener,
@@ -83,10 +92,12 @@ func TestFakesAndSigningHelpers(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	report, err := mgr.Load(t.Context())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(report.Loaded) != 1 || opener.OpenCount(cand.ID) < 1 || len(opener.OpenedIDs()) < 1 {
 		t.Fatalf("unexpected report/opener state: %+v / %v", report, opener.OpenedIDs())
 	}
@@ -100,16 +111,20 @@ func TestFakesAndSigningHelpers(t *testing.T) {
 		},
 	})
 	src.SetCandidates(cand, badCand)
+
 	_, _ = mgr.Reload(t.Context())
 
 	if len(obs.Admissions()) == 0 || len(obs.Inits()) == 0 || len(obs.Quarantines()) == 0 || len(obs.StatsHistory()) == 0 {
 		t.Fatalf("expected all observer slices populated: adm=%d init=%d quar=%d stats=%d",
 			len(obs.Admissions()), len(obs.Inits()), len(obs.Quarantines()), len(obs.StatsHistory()))
 	}
+
 	obs.Reset()
+
 	if len(obs.Admissions()) != 0 {
 		t.Fatalf("expected empty admissions after Reset, got %v", obs.Admissions())
 	}
+
 	_ = mgr.Close(t.Context())
 
 	if err := proteustest.GoroutineLeaks(); err != nil {

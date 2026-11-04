@@ -12,15 +12,19 @@ import (
 func TestGoodPluginSymbols(t *testing.T) {
 	t.Parallel()
 	main()
+
 	if err := Init(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := HealthCheck(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := Close(context.Background()); err != nil {
 		t.Fatal(err)
 	}
+
 	g := goodGreeter{}
 	if g.SPIVersion().Contract != "greeter" || g.Greet("x") != "hello, x" {
 		t.Fatal("unexpected greeter behavior")

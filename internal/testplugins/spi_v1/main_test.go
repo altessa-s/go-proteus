@@ -9,6 +9,7 @@ import "testing"
 func TestSPIV1Symbols(t *testing.T) {
 	t.Parallel()
 	main()
+
 	g := v1Greeter{}
 	if g.SPIVersion().Major != 1 || g.Greet("x") != "v1:x" {
 		t.Fatal("unexpected v1Greeter behavior")

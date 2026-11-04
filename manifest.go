@@ -61,30 +61,39 @@ func (m Manifest) Validate() error {
 	if m.Version != ManifestVersion {
 		return fmt.Errorf("%w: unsupported schema version %d", ErrManifestInvalid, m.Version)
 	}
+
 	if m.Name == "" {
 		return fmt.Errorf("%w: name is required", ErrManifestInvalid)
 	}
+
 	if m.PluginVer == "" {
 		return fmt.Errorf("%w: version is required", ErrManifestInvalid)
 	}
+
 	if !IsValidSHA256Hex(m.SHA256) {
 		return fmt.Errorf("%w: sha256 must be 64 lowercase hex characters", ErrManifestInvalid)
 	}
+
 	if m.Size <= 0 {
 		return fmt.Errorf("%w: size must be positive", ErrManifestInvalid)
 	}
+
 	if m.GOOS == "" || m.GOARCH == "" {
 		return fmt.Errorf("%w: goos and goarch are required", ErrManifestInvalid)
 	}
+
 	if m.HostMajor < 0 {
 		return fmt.Errorf("%w: hostMajor must be non-negative", ErrManifestInvalid)
 	}
+
 	if m.IssuedAt.IsZero() {
 		return fmt.Errorf("%w: issuedAt is required", ErrManifestInvalid)
 	}
+
 	if !m.NotAfter.IsZero() && !m.NotAfter.After(m.IssuedAt) {
 		return fmt.Errorf("%w: notAfter must be after issuedAt", ErrManifestInvalid)
 	}
+
 	return nil
 }
 
@@ -98,11 +107,13 @@ func IsValidSHA256Hex(s string) bool {
 	if len(s) != sha256HexLen {
 		return false
 	}
+
 	for i := range len(s) {
 		c := s[i]
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}
+
 	return true
 }

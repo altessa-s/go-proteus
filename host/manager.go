@@ -74,9 +74,11 @@ func New(source proteus.Source, opener proteus.Opener, opts ...Option) (*Manager
 	if source == nil {
 		return nil, errors.New("host: source is required")
 	}
+
 	if opener == nil {
 		return nil, errors.New("host: opener is required")
 	}
+
 	cfg := newOptions(opts...)
 	if cfg.unsigned != proteus.UnsignedReject && cfg.unsigned != proteus.UnsignedWarn && cfg.unsigned != proteus.UnsignedAllow {
 		return nil, fmt.Errorf("host: unknown unsigned policy %d", cfg.unsigned)
@@ -87,13 +89,17 @@ func New(source proteus.Source, opener proteus.Opener, opts ...Option) (*Manager
 		return nil, fmt.Errorf("%w: verifier is required when unsigned policy is reject", proteus.ErrSignatureMissing)
 	}
 
-	var hasHostMajor bool
-	var hostMajor int
+	var (
+		hasHostMajor bool
+		hostMajor    int
+	)
+
 	if cfg.hostVersion != "" {
 		sv, err := parseSemver(cfg.hostVersion)
 		if err != nil {
 			return nil, fmt.Errorf("host: invalid hostVersion %q: %w", cfg.hostVersion, err)
 		}
+
 		hasHostMajor = true
 		hostMajor = sv.major
 	}
@@ -104,6 +110,7 @@ func New(source proteus.Source, opener proteus.Opener, opts ...Option) (*Manager
 		if err != nil {
 			return nil, fmt.Errorf("host: invalid minVersion for plugin %q (%q): %w", name, rawVer, err)
 		}
+
 		minVers[name] = sv
 	}
 
@@ -113,6 +120,7 @@ func New(source proteus.Source, opener proteus.Opener, opts ...Option) (*Manager
 		if !proteus.IsValidSHA256Hex(norm) {
 			return nil, fmt.Errorf("host: invalid revoked sha256 digest %q", h)
 		}
+
 		revoked[norm] = struct{}{}
 	}
 
@@ -134,18 +142,22 @@ func New(source proteus.Source, opener proteus.Opener, opts ...Option) (*Manager
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
 	}
+
 	obs := cfg.observer
 	if obs == nil {
 		obs = proteus.NoopObserver{}
 	}
+
 	nowFn := cfg.now
 	if nowFn == nil {
 		nowFn = time.Now
 	}
+
 	goos := cfg.goos
 	if goos == "" {
 		goos = runtime.GOOS
 	}
+
 	goarch := cfg.goarch
 	if goarch == "" {
 		goarch = runtime.GOARCH
@@ -186,42 +198,52 @@ func (m *Manager) Load(ctx context.Context) (proteus.LoadReport, error) {
 	if err := ctx.Err(); err != nil {
 		return proteus.LoadReport{}, err
 	}
+
 	m.loadMu.Lock()
 	defer m.loadMu.Unlock()
+
 	m.mu.RLock()
 	closed := m.closed
 	m.mu.RUnlock()
+
 	if closed {
 		return proteus.LoadReport{}, proteus.ErrClosed
 	}
 
 	candidates, err := m.source.Candidates(ctx)
 	m.mu.Lock()
+
 	m.discoveryErr = err
 	if err == nil {
 		// Discovery failures describe the latest successful scan, including removed entries.
 		for _, key := range m.discoveryFailures {
 			delete(m.failed, key)
 		}
+
 		m.discoveryFailures = nil
 	}
 	m.mu.Unlock()
+
 	if err != nil {
 		return proteus.LoadReport{}, err
 	}
 
 	var report proteus.LoadReport
+
 	for _, cand := range candidates {
 		if err := ctx.Err(); err != nil {
 			return report, err
 		}
+
 		before := len(report.Failed)
 		m.admitCandidate(ctx, cand, &report)
+
 		if cand.Err != nil {
 			m.mu.Lock()
 			m.discoveryFailures = append(m.discoveryFailures, "source:"+cand.ID)
 			m.mu.Unlock()
 		}
+
 		for _, failure := range report.Failed[before:] {
 			m.recordFailedPlugin(sdk.Descriptor{Name: failure.Name}, proteus.Manifest{}, failure.Source, failure.SHA256, failure.Err)
 		}
@@ -232,6 +254,7 @@ func (m *Manager) Load(ctx context.Context) (proteus.LoadReport, error) {
 	stats := m.statsLocked()
 	m.mu.RUnlock()
 	m.observer.RegistryChanged(stats)
+
 	return report, nil
 }
 
@@ -247,32 +270,39 @@ func (m *Manager) Reload(ctx context.Context) (proteus.LoadReport, error) {
 func (m *Manager) Unload(ctx context.Context, name string) error {
 	m.loadMu.Lock()
 	defer m.loadMu.Unlock()
+
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		return proteus.ErrClosed
 	}
+
 	entry, ok := m.ready[name]
 	if !ok {
 		m.mu.Unlock()
 		return fmt.Errorf("%w: %s", proteus.ErrNotFound, name)
 	}
+
 	delete(m.ready, name)
 	entry.setState(proteus.StateUnloaded, nil)
 	hash := entry.plugin.SHA256()
 	delete(m.loadedHashes, hash)
+
 	if proteus.IsValidSHA256Hex(hash) {
 		m.unloadedHashes[hash] = struct{}{}
 	}
+
 	stats := m.statsLocked()
 	m.mu.Unlock()
 
 	closeErr := entry.release(ctx)
 	entry.setState(proteus.StateUnloaded, closeErr)
 	m.observer.RegistryChanged(stats)
+
 	return closeErr
 }
 
@@ -281,17 +311,21 @@ func (m *Manager) Unload(ctx context.Context, name string) error {
 func (m *Manager) Close(ctx context.Context) error {
 	m.loadMu.Lock()
 	defer m.loadMu.Unlock()
+
 	m.mu.Lock()
 	if m.closed {
 		m.mu.Unlock()
 		return nil
 	}
+
 	m.closed = true
+
 	entries := make([]readyPlugin, 0, len(m.ready))
 	for _, entry := range m.ready {
 		entry.setState(proteus.StateUnloaded, nil)
 		entries = append(entries, entry)
 	}
+
 	clear(m.ready)
 	clear(m.loadedHashes)
 	stats := m.statsLocked()
@@ -302,15 +336,18 @@ func (m *Manager) Close(ctx context.Context) error {
 	})
 
 	var errs []error
+
 	for _, entry := range entries {
 		err := entry.release(ctx)
 		entry.setState(proteus.StateUnloaded, err)
+
 		if err != nil {
 			errs = append(errs, err)
 		}
 	}
 
 	m.observer.RegistryChanged(stats)
+
 	return errors.Join(errs...)
 }
 
@@ -319,37 +356,45 @@ func (m *Manager) Get(name string) (*proteus.Plugin, bool) {
 	m.mu.RLock()
 	entry, ok := m.ready[name]
 	m.mu.RUnlock()
+
 	if !ok {
 		return nil, false
 	}
+
 	return entry.plugin, true
 }
 
 // All returns a deterministic iterator over all plugins currently in [proteus.StateReady], sorted by name.
 func (m *Manager) All() iter.Seq[*proteus.Plugin] {
 	m.mu.RLock()
+
 	list := make([]*proteus.Plugin, 0, len(m.ready))
 	for _, entry := range m.ready {
 		list = append(list, entry.plugin)
 	}
+
 	m.mu.RUnlock()
 	slices.SortFunc(list, func(a, b *proteus.Plugin) int {
 		return cmp.Compare(a.Name(), b.Name())
 	})
+
 	return slices.Values(list)
 }
 
 // Failed returns a deterministic iterator over all plugins currently in [proteus.StateFailed], sorted by name.
 func (m *Manager) Failed() iter.Seq[*proteus.Plugin] {
 	m.mu.RLock()
+
 	list := make([]*proteus.Plugin, 0, len(m.failed))
 	for _, p := range m.failed {
 		list = append(list, p)
 	}
+
 	m.mu.RUnlock()
 	slices.SortFunc(list, func(a, b *proteus.Plugin) int {
 		return cmp.Compare(a.Name(), b.Name())
 	})
+
 	return slices.Values(list)
 }
 
@@ -380,6 +425,7 @@ func (m *Manager) ClearQuarantine(sha256 string) {
 	} else {
 		m.quarantine.remove(strings.ToLower(strings.TrimSpace(sha256)))
 	}
+
 	stats := m.statsLocked()
 	m.mu.Unlock()
 	m.observer.RegistryChanged(stats)
@@ -388,22 +434,27 @@ func (m *Manager) ClearQuarantine(sha256 string) {
 // Health evaluates the health of all ready and failed plugins and returns an aggregate [proteus.HealthReport].
 func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 	m.mu.RLock()
+
 	if m.closed {
 		qCount := m.quarantine.len()
 		m.mu.RUnlock()
+
 		return proteus.HealthReport{
 			Status:      proteus.StatusNotServing,
 			Quarantined: qCount,
 		}
 	}
+
 	readyList := make([]readyPlugin, 0, len(m.ready))
 	for _, entry := range m.ready {
 		readyList = append(readyList, entry)
 	}
+
 	failedList := make([]*proteus.Plugin, 0, len(m.failed))
 	for _, p := range m.failed {
 		failedList = append(failedList, p)
 	}
+
 	qCount := m.quarantine.len()
 	discoveryErr := m.discoveryErr
 	m.mu.RUnlock()
@@ -416,24 +467,30 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 
 	for _, entry := range readyList {
 		p := entry.plugin
+
 		var probeErr error
 		// Admission to a probe and removal from the registry are mutually exclusive.
 		m.mu.RLock()
 		current, active := m.ready[p.Name()]
+
 		active = active && current.plugin == p
 		if active && entry.healthFn != nil {
 			entry.probes.Add(1)
 		}
+
 		m.mu.RUnlock()
+
 		if active && entry.healthFn != nil {
 			probeErr = runWatchdog(ctx, m.healthTimeout, p.Name(), "HealthCheck", nil, m.logger, func(ctx context.Context) error {
 				defer entry.probes.Done()
 				return entry.healthFn(ctx)
 			})
 		}
+
 		state := p.State()
 		if probeErr != nil || state != proteus.StateReady {
 			failedCount++
+
 			plugins = append(plugins, proteus.PluginHealth{
 				Name:   p.Name(),
 				State:  state,
@@ -442,6 +499,7 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 			})
 		} else {
 			readyCount++
+
 			plugins = append(plugins, proteus.PluginHealth{
 				Name:   p.Name(),
 				State:  state,
@@ -452,6 +510,7 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 
 	for _, fp := range failedList {
 		failedCount++
+
 		plugins = append(plugins, proteus.PluginHealth{
 			Name:   fp.Name(),
 			State:  proteus.StateFailed,
@@ -465,6 +524,7 @@ func (m *Manager) Health(ctx context.Context) proteus.HealthReport {
 	})
 
 	status := proteus.StatusServing
+
 	if failedCount > 0 || discoveryErr != nil {
 		if readyCount == 0 {
 			status = proteus.StatusNotServing
@@ -487,32 +547,40 @@ func (m *Manager) isNameAllowed(name string) bool {
 	if _, denied := m.deny[name]; denied {
 		return false
 	}
+
 	if len(m.allow) > 0 {
 		_, allowed := m.allow[name]
 		return allowed
 	}
+
 	return true
 }
 
 func (m *Manager) isNameLoaded(name string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	_, ok := m.ready[name]
+
 	return ok
 }
 
 func (m *Manager) isHashLoadedOrUnloaded(hash string) bool {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
+
 	if !proteus.IsValidSHA256Hex(hash) {
 		return false
 	}
+
 	if _, loaded := m.loadedHashes[hash]; loaded {
 		return true
 	}
+
 	if _, unloaded := m.unloadedHashes[hash]; unloaded {
 		return true
 	}
+
 	return false
 }
 
@@ -530,10 +598,12 @@ func (m *Manager) statsLocked() proteus.Stats {
 func (m *Manager) clearActiveSourceFailure(source, hash string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	name, loaded := m.loadedHashes[hash]
 	if !loaded || m.ready[name].plugin.Source() != source {
 		return
 	}
+
 	for key, failed := range m.failed {
 		if failed.Source() == source {
 			delete(m.failed, key)

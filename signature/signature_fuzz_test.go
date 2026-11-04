@@ -18,15 +18,19 @@ func FuzzUnmarshalEnvelopeAndVerify(f *testing.F) {
 	seed := make([]byte, ed25519.SeedSize)
 	priv := ed25519.NewKeyFromSeed(seed)
 	pub := priv.Public().(ed25519.PublicKey)
+
 	key, err := signature.NewKey(pub)
 	if err != nil {
 		f.Fatal(err)
 	}
+
 	ks, err := signature.NewKeySet(key)
 	if err != nil {
 		f.Fatal(err)
 	}
+
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
 	verifier, err := signature.NewVerifier(ks, signature.WithNow(func() time.Time { return now }))
 	if err != nil {
 		f.Fatal(err)
@@ -54,6 +58,7 @@ func FuzzUnmarshalManifest(f *testing.F) {
 			if vErr := m.Validate(); vErr != nil {
 				t.Fatalf("UnmarshalManifest returned invalid manifest: %v", vErr)
 			}
+
 			_, _ = signature.MarshalManifest(m)
 		}
 	})

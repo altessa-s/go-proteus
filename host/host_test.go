@@ -35,6 +35,7 @@ func (m memSymbols) Lookup(name string) (any, error) {
 	if !ok {
 		return nil, errors.New("symbol not found")
 	}
+
 	return v, nil
 }
 
@@ -48,11 +49,14 @@ func (s *memSource) Candidates(ctx context.Context) ([]proteus.Candidate, error)
 	if err := ctx.Err(); err != nil {
 		return nil, err
 	}
+
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.err != nil {
 		return nil, s.err
 	}
+
 	return slices.Clone(s.candidates), nil
 }
 
@@ -72,19 +76,23 @@ func (o *fakeOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA2
 	if err := ctx.Err(); err != nil {
 		return proteus.Opened{}, err
 	}
+
 	o.mu.Lock()
 	o.calls = append(o.calls, c.ID)
 	fn, ok := o.results[c.ID]
 	o.mu.Unlock()
+
 	if !ok {
 		return proteus.Opened{}, errors.New("unexpected open for " + c.ID)
 	}
+
 	return fn(c, verifiedSHA256)
 }
 
 func (o *fakeOpener) callCount() int {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	return len(o.calls)
 }
 
@@ -129,46 +137,59 @@ type testSigner struct {
 
 func newTestSigner(t *testing.T) *testSigner {
 	t.Helper()
+
 	now := time.Date(2026, 7, 1, 12, 0, 0, 0, time.UTC)
+
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	key, err := signature.NewKey(pub)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	ks, err := signature.NewKeySet(key)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	v, err := signature.NewVerifier(ks, signature.WithNow(func() time.Time { return now }))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	return &testSigner{priv: priv, key: key, verifier: v, now: now}
 }
 
 func (s *testSigner) signManifest(t *testing.T, m proteus.Manifest) []byte {
 	t.Helper()
+
 	if m.Version == 0 {
 		m.Version = proteus.ManifestVersion
 	}
+
 	if m.GOOS == "" {
 		m.GOOS = "linux"
 	}
+
 	if m.GOARCH == "" {
 		m.GOARCH = "arm64"
 	}
+
 	if m.IssuedAt.IsZero() {
 		m.IssuedAt = s.now
 	}
+
 	payload, err := signature.MarshalManifest(m)
 	if err != nil {
 		t.Fatalf("MarshalManifest: %v", err)
 	}
+
 	pae := signature.PAE(proteus.ManifestPayloadType, payload)
 	sig := ed25519.Sign(s.priv, pae)
+
 	raw, err := signature.MarshalEnvelope(signature.Envelope{
 		PayloadType: proteus.ManifestPayloadType,
 		Payload:     base64.StdEncoding.EncodeToString(payload),
@@ -179,6 +200,7 @@ func (s *testSigner) signManifest(t *testing.T, m proteus.Manifest) []byte {
 	if err != nil {
 		t.Fatalf("MarshalEnvelope: %v", err)
 	}
+
 	return raw
 }
 
@@ -198,12 +220,16 @@ func makeSignedCandidate(
 	syms memSymbols,
 ) (proteus.Candidate, string) {
 	t.Helper()
+
 	h := hashOf(id + ":" + name + ":" + ver)
+
 	const size int64 = 1024
+
 	if _, ok := syms[sdk.SymbolDescriptor]; !ok {
 		desc := sdk.Descriptor{Name: name, Version: ver, Description: name + " desc"}
 		syms[sdk.SymbolDescriptor] = &desc
 	}
+
 	m := proteus.Manifest{
 		Version:   proteus.ManifestVersion,
 		Name:      name,
@@ -223,6 +249,7 @@ func makeSignedCandidate(
 			Size:    size,
 		}, nil
 	}
+
 	return proteus.Candidate{
 		ID: id,
 		Open: func() (proteus.Artifact, error) {
@@ -234,6 +261,7 @@ func makeSignedCandidate(
 
 func TestFailClosedUnsignedDefault_D8(t *testing.T) {
 	t.Parallel()
+
 	src := &memSource{}
 	opener := newFakeOpener()
 
@@ -241,9 +269,11 @@ func TestFailClosedUnsignedDefault_D8(t *testing.T) {
 	if _, err := host.New(src, opener); !errors.Is(err, proteus.ErrSignatureMissing) {
 		t.Fatalf("expected ErrSignatureMissing when verifier is nil under UnsignedReject, got %v", err)
 	}
+
 	if _, err := host.New(nil, opener); err == nil {
 		t.Fatal("expected error for nil source")
 	}
+
 	if _, err := host.New(src, nil); err == nil {
 		t.Fatal("expected error for nil opener")
 	}
@@ -252,6 +282,7 @@ func TestFailClosedUnsignedDefault_D8(t *testing.T) {
 	src.candidates = []proteus.Candidate{
 		{ID: "unsigned.so", Signature: nil},
 	}
+
 	mgr, err := host.New(src, opener,
 		host.WithVerifier(ts.verifier),
 		host.WithGoos("linux"),
@@ -260,13 +291,16 @@ func TestFailClosedUnsignedDefault_D8(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	report, err := mgr.Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(report.Failed) != 1 || !errors.Is(report.Failed[0].Err, proteus.ErrSignatureMissing) || !report.Failed[0].Unsigned {
 		t.Fatalf("expected unsigned candidate rejected with ErrSignatureMissing, got %+v", report.Failed)
 	}
+
 	if opener.callCount() != 0 {
 		t.Fatalf("expected Opener not called for rejected unsigned candidate, got %d calls", opener.callCount())
 	}
@@ -310,16 +344,20 @@ func TestFailClosedUnsignedDefault_D8(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	devReport, err := devMgr.Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(devReport.Loaded) != 1 || !devReport.Loaded[0].Unsigned() || devReport.Loaded[0].Name() != "allowed" {
 		t.Fatalf("expected 1 unsigned plugin 'allowed', got %+v", devReport.Loaded)
 	}
+
 	if len(devReport.Skipped) != 1 || !errors.Is(devReport.Skipped[0].Err, proteus.ErrDisabled) || !devReport.Skipped[0].Unsigned {
 		t.Fatalf("expected denied unsigned plugin skipped with ErrDisabled and Unsigned=true, got %+v", devReport.Skipped)
 	}
+
 	if deniedInitCalled {
 		t.Fatal("denied unsigned plugin must not run Init")
 	}
@@ -354,15 +392,19 @@ func TestInitWatchdogTimeout_D2(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if len(report.Loaded) != 0 || len(report.Failed) != 1 {
 			t.Fatalf("expected hung plugin to fail Init, got loaded=%d failed=%d", len(report.Loaded), len(report.Failed))
 		}
+
 		if !errors.Is(report.Failed[0].Err, proteus.ErrInitFailed) || !errors.Is(report.Failed[0].Err, context.DeadlineExceeded) {
 			t.Fatalf("expected ErrInitFailed + DeadlineExceeded, got %v", report.Failed[0].Err)
 		}
+
 		if _, ok := mgr.Get("hung"); ok {
 			t.Fatal("hung plugin must not be in active registry")
 		}
+
 		q := mgr.Quarantined()
 		if len(q) != 1 || q[0].SHA256 != h {
 			t.Fatalf("expected hung plugin quarantined with hash %s, got %+v", h, q)
@@ -392,6 +434,7 @@ func TestFailedPluginsExcludedFromRegistryAndHealth_D3_AndObserver_D4(t *testing
 	})
 
 	src := &memSource{candidates: []proteus.Candidate{cGood, cErr, cPanic}}
+
 	mgr, err := host.New(src, opener,
 		host.WithVerifier(ts.verifier),
 		host.WithGoos("linux"),
@@ -406,12 +449,15 @@ func TestFailedPluginsExcludedFromRegistryAndHealth_D3_AndObserver_D4(t *testing
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(report.Loaded) != 1 || report.Loaded[0].Name() != "good" {
 		t.Fatalf("expected only 'good' in Loaded, got %+v", report.Loaded)
 	}
+
 	if len(report.Failed) != 2 {
 		t.Fatalf("expected 2 failed plugins, got %+v", report.Failed)
 	}
+
 	if !errors.Is(report.Err(), proteus.ErrInitFailed) || !errors.Is(report.Err(), proteus.ErrPanicked) {
 		t.Fatalf("expected report.Err() to match ErrInitFailed and ErrPanicked, got %v", report.Err())
 	}
@@ -420,24 +466,30 @@ func TestFailedPluginsExcludedFromRegistryAndHealth_D3_AndObserver_D4(t *testing
 	if _, ok := mgr.Get("errplug"); ok {
 		t.Fatal("failed plugin errplug must not be returned by Get")
 	}
+
 	if _, ok := mgr.Get("panicplug"); ok {
 		t.Fatal("failed plugin panicplug must not be returned by Get")
 	}
+
 	var activeNames []string
 	for p := range mgr.All() {
 		activeNames = append(activeNames, p.Name())
 	}
+
 	if !slices.Equal(activeNames, []string{"good"}) {
 		t.Fatalf("expected All() == [good], got %v", activeNames)
 	}
 
 	var failedNames []string
+
 	for fp := range mgr.Failed() {
 		if fp.State() != proteus.StateFailed {
 			t.Fatalf("expected StateFailed, got %v", fp.State())
 		}
+
 		failedNames = append(failedNames, fp.Name())
 	}
+
 	if !slices.Equal(failedNames, []string{"errplug", "panicplug"}) {
 		t.Fatalf("expected Failed() == [errplug panicplug], got %v", failedNames)
 	}
@@ -452,6 +504,7 @@ func TestFailedPluginsExcludedFromRegistryAndHealth_D3_AndObserver_D4(t *testing
 	if err := mgr.Unload(context.Background(), "good"); err != nil {
 		t.Fatalf("Unload(good): %v", err)
 	}
+
 	hrAfterUnload := mgr.Health(context.Background())
 	if hrAfterUnload.Status != proteus.StatusNotServing || hrAfterUnload.Ready != 0 || hrAfterUnload.Failed != 2 {
 		t.Fatalf("expected StatusNotServing after unloading only ready plugin, got %+v", hrAfterUnload)
@@ -531,9 +584,11 @@ func TestSignedPreOpenGates_D5_NameCollision_D11_UnloadReload_D10_AndQuarantineE
 	if opener.callCount() != 0 {
 		t.Fatalf("expected 0 Opener.Open calls for pre-open gated candidates, got %d", opener.callCount())
 	}
+
 	if len(report.Skipped) != 1 || !errors.Is(report.Skipped[0].Err, proteus.ErrDisabled) {
 		t.Fatalf("expected 1 skipped disabled candidate, got %+v", report.Skipped)
 	}
+
 	if len(report.Failed) != 4 {
 		t.Fatalf("expected 4 failed candidates, got %+v", report.Failed)
 	}
@@ -554,13 +609,16 @@ func TestSignedPreOpenGates_D5_NameCollision_D11_UnloadReload_D10_AndQuarantineE
 		},
 	})
 	src.candidates = []proteus.Candidate{cDup1, cDup2}
+
 	dupReport, err := mgr.Reload(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(dupReport.Loaded) != 1 || dupInit1 != 1 || dupInit2 != 0 {
 		t.Fatalf("expected first loaded and second rejected before Init (init1=%d, init2=%d)", dupInit1, dupInit2)
 	}
+
 	if len(dupReport.Failed) != 1 || !errors.Is(dupReport.Failed[0].Err, proteus.ErrAlreadyLoaded) {
 		t.Fatalf("expected ErrAlreadyLoaded on duplicate name, got %+v", dupReport.Failed)
 	}
@@ -569,26 +627,32 @@ func TestSignedPreOpenGates_D5_NameCollision_D11_UnloadReload_D10_AndQuarantineE
 	if err := mgr.Unload(context.Background(), "same-name"); err != nil {
 		t.Fatal(err)
 	}
+
 	src.candidates = []proteus.Candidate{cDup1}
+
 	reloadAfterUnload, err := mgr.Reload(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(reloadAfterUnload.Loaded) != 0 || len(reloadAfterUnload.Skipped) != 1 || dupInit1 != 1 {
 		t.Fatalf("expected unloaded hash to be skipped on Reload without re-running Init (init1=%d)", dupInit1)
 	}
 
 	// Defect 16: Pre-hash failure and ErrSnapshotModified must never insert "" into quarantine.
 	mgr.ClearQuarantine("")
+
 	if len(mgr.Quarantined()) != 0 {
 		t.Fatal("expected empty quarantine after ClearQuarantine")
 	}
+
 	opener.results["ioerr.so"] = func(proteus.Candidate, string) (proteus.Opened, error) {
 		return proteus.Opened{SHA256: ""}, errors.New("disk read error before hashing")
 	}
 	opener.results["tamper.so"] = func(proteus.Candidate, string) (proteus.Opened, error) {
 		return proteus.Opened{SHA256: hashOf("tamper")}, proteus.ErrSnapshotModified
 	}
+
 	devMgr, err := host.New(
 		&memSource{candidates: []proteus.Candidate{{ID: "ioerr.so"}, {ID: "tamper.so"}}},
 		opener,
@@ -597,10 +661,12 @@ func TestSignedPreOpenGates_D5_NameCollision_D11_UnloadReload_D10_AndQuarantineE
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	qReport, err := devMgr.Load(context.Background())
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(qReport.Failed) != 2 || len(devMgr.Quarantined()) != 0 {
 		t.Fatalf("expected 0 quarantined entries for pre-hash I/O error and ErrSnapshotModified, got %+v", devMgr.Quarantined())
 	}
@@ -630,6 +696,7 @@ func TestManifestMismatchDepSkewHealthAndClose(t *testing.T) {
 			if !healthy {
 				return errors.New("unhealthy")
 			}
+
 			return nil
 		},
 		sdk.SymbolClose: func(context.Context) error {
@@ -640,6 +707,7 @@ func TestManifestMismatchDepSkewHealthAndClose(t *testing.T) {
 	})
 
 	src := &memSource{candidates: []proteus.Candidate{cMismatch, cFull}}
+
 	mgr, err := host.New(src, opener,
 		host.WithVerifier(ts.verifier),
 		host.WithGoos("linux"),
@@ -666,26 +734,31 @@ func TestManifestMismatchDepSkewHealthAndClose(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(report.Loaded) != 1 || len(report.Failed) != 1 {
 		t.Fatalf("expected 1 loaded and 1 failed, got %+v", report)
 	}
+
 	if !errors.Is(report.Failed[0].Err, proteus.ErrManifestMismatch) {
 		t.Fatalf("expected ErrManifestMismatch, got %v", report.Failed[0].Err)
 	}
 
 	// LookupAll finds CustomSym on 'full'.
 	foundSym := false
+
 	for p, sym := range mgr.LookupAll("CustomSym") {
 		if p.Name() == "full" && sym == "val" {
 			foundSym = true
 		}
 	}
+
 	if !foundSym {
 		t.Fatal("expected LookupAll to find CustomSym on 'full'")
 	}
 
 	// Make 'full' fail its HealthCheck probe.
 	healthy = false
+
 	hr := mgr.Health(context.Background())
 	if hr.Status != proteus.StatusNotServing || hr.Ready != 0 {
 		t.Fatalf("expected StatusNotServing when HealthCheck fails, got %+v", hr)
@@ -694,6 +767,7 @@ func TestManifestMismatchDepSkewHealthAndClose(t *testing.T) {
 	// Clear specific quarantine hash.
 	if len(mgr.Quarantined()) == 1 {
 		mgr.ClearQuarantine(mgr.Quarantined()[0].SHA256)
+
 		if len(mgr.Quarantined()) != 0 {
 			t.Fatal("expected quarantine cleared by specific SHA256")
 		}
@@ -703,18 +777,23 @@ func TestManifestMismatchDepSkewHealthAndClose(t *testing.T) {
 	if err := mgr.Close(context.Background()); err != nil {
 		t.Fatalf("Close: %v", err)
 	}
+
 	if !closed {
 		t.Fatal("expected plugin Close hook to run")
 	}
+
 	if err := mgr.Close(context.Background()); err != nil {
 		t.Fatalf("second Close should be nil, got %v", err)
 	}
+
 	if _, err := mgr.Load(context.Background()); !errors.Is(err, proteus.ErrClosed) {
 		t.Fatalf("expected ErrClosed from Load after Close, got %v", err)
 	}
+
 	if err := mgr.Unload(context.Background(), "full"); !errors.Is(err, proteus.ErrClosed) {
 		t.Fatalf("expected ErrClosed from Unload after Close, got %v", err)
 	}
+
 	if mgr.Health(context.Background()).Status != proteus.StatusNotServing {
 		t.Fatal("expected StatusNotServing on closed manager")
 	}
@@ -730,9 +809,11 @@ func TestUnsignedAdmissionSymbolErrorsAndOptionValidation(t *testing.T) {
 	if _, err := host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow), host.WithHostVersion("bad-ver")); err == nil {
 		t.Fatal("expected error for invalid hostVersion")
 	}
+
 	if _, err := host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow), host.WithMinVersions(map[string]string{"p": "bad"})); err == nil {
 		t.Fatal("expected error for invalid minVersions")
 	}
+
 	if _, err := host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow), host.WithRevoked("not-a-sha256")); err == nil {
 		t.Fatal("expected error for invalid revoked hash")
 	}
@@ -797,8 +878,12 @@ func TestUnsignedAdmissionSymbolErrorsAndOptionValidation(t *testing.T) {
 	descPtr := &sdk.Descriptor{Name: "upointers", Version: "1.0.0-rc1+build1"}
 	depVal := sdk.DepInfo{GoVersion: "go1.27.3"}
 	depPtr := &depVal
-	var initFn func(context.Context) error = func(context.Context) error { return nil }
-	var closeFn func(context.Context) error = func(context.Context) error { return errors.New("close err") }
+
+	var (
+		initFn  func(context.Context) error = func(context.Context) error { return nil }
+		closeFn func(context.Context) error = func(context.Context) error { return errors.New("close err") }
+	)
+
 	uPtrHash := hashOf("upointers")
 	opener.results["upointers.so"] = func(proteus.Candidate, string) (proteus.Opened, error) {
 		return proteus.Opened{
@@ -862,6 +947,7 @@ func TestUnsignedAdmissionSymbolErrorsAndOptionValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(rep.Loaded) != 1 || rep.Loaded[0].Name() != "upointers" {
 		t.Fatalf("expected only upointers loaded, got %+v", rep.Loaded)
 	}
@@ -871,6 +957,7 @@ func TestUnsignedAdmissionSymbolErrorsAndOptionValidation(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(rep2.Skipped) == 0 {
 		t.Fatal("expected skipped candidates on second Reload")
 	}
@@ -956,6 +1043,7 @@ func TestSignedErrorPathsAndVersionCompare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(rep1.Loaded) != 2 {
 		t.Fatalf("expected 2 loaded plugins (nonsemver, highver), got %d", len(rep1.Loaded))
 	}
@@ -965,6 +1053,7 @@ func TestSignedErrorPathsAndVersionCompare(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if len(rep2.Skipped) < 4 {
 		t.Fatalf("expected >= 4 skipped candidates on second Reload, got %d", len(rep2.Skipped))
 	}
@@ -973,6 +1062,7 @@ func TestSignedErrorPathsAndVersionCompare(t *testing.T) {
 	if _, ok := mgr.Get("highver"); !ok {
 		t.Fatal("expected highver in Get")
 	}
+
 	for range mgr.LookupAll(sdk.SymbolDescriptor) {
 		break
 	}

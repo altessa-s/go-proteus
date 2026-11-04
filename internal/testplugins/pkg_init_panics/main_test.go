@@ -9,10 +9,12 @@ import "testing"
 func TestPkgInitPanicsSymbol(t *testing.T) {
 	t.Parallel()
 	main()
+
 	defer func() {
 		if recover() == nil {
 			t.Fatal("expected triggerInitPanic to panic")
 		}
 	}()
+
 	triggerInitPanic()
 }

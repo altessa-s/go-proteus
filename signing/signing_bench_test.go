@@ -19,6 +19,7 @@ func BenchmarkSignManifestEd25519(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	m := proteus.Manifest{
 		Version:   proteus.ManifestVersion,
 		Name:      "bench",
@@ -31,6 +32,7 @@ func BenchmarkSignManifestEd25519(b *testing.B) {
 	}
 
 	b.ReportAllocs()
+
 	for b.Loop() {
 		if _, err := signing.SignManifest(m, kp.PrivateKey); err != nil {
 			b.Fatal(err)

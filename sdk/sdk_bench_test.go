@@ -18,6 +18,7 @@ func BenchmarkUnwrapAll(b *testing.B) {
 	chain := fmt.Errorf("l3: %w", errors.Join(fmt.Errorf("l2: %w", leaf1), leaf2))
 
 	b.ReportAllocs()
+
 	for b.Loop() {
 		_ = sdk.UnwrapAll(chain)
 	}

@@ -13,6 +13,7 @@ func TestInitBlocksSymbol(t *testing.T) {
 	t.Parallel()
 	main()
 	close(Release)
+
 	if err := Init(context.Background()); err != nil {
 		t.Fatal(err)
 	}

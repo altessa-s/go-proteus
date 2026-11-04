@@ -21,6 +21,7 @@ func (m mapSymbols) Lookup(name string) (any, error) {
 	if !ok {
 		return nil, errors.New("symbol not found")
 	}
+
 	return v, nil
 }
 
@@ -45,9 +46,11 @@ func TestManifestValidateAndExpiry(t *testing.T) {
 	if err := base.Validate(); err != nil {
 		t.Fatalf("expected valid manifest, got %v", err)
 	}
+
 	if base.IsExpired(now.Add(30 * time.Minute)) {
 		t.Fatal("expected manifest not expired at +30m")
 	}
+
 	if !base.IsExpired(now.Add(2 * time.Hour)) {
 		t.Fatal("expected manifest expired at +2h")
 	}
@@ -72,8 +75,10 @@ func TestManifestValidateAndExpiry(t *testing.T) {
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			m := base
 			tc.mutate(&m)
+
 			err := m.Validate()
 			if !errors.Is(err, proteus.ErrManifestInvalid) {
 				t.Fatalf("expected ErrManifestInvalid, got %v", err)
@@ -111,24 +116,30 @@ func TestPluginLifecycleAndLookup(t *testing.T) {
 	if p.Name() != "auth" || p.Version() != "2.0.0" || p.Description() != "Auth plugin" {
 		t.Fatalf("unexpected plugin identity: %s %s %s", p.Name(), p.Version(), p.Description())
 	}
+
 	if p.Source() != "auth.so" || p.SHA256() != hash || !p.LoadedAt().Equal(now) {
 		t.Fatalf("unexpected plugin source/hash/time")
 	}
+
 	if p.Unsigned() {
 		t.Fatal("expected signed plugin")
 	}
+
 	if gotM, signed := p.Manifest(); !signed || gotM.Name != "auth" {
 		t.Fatalf("unexpected Manifest(): %+v, %v", gotM, signed)
 	}
+
 	if p.State() != proteus.StateReady || p.State().String() != "ready" {
 		t.Fatalf("unexpected initial state: %v", p.State())
 	}
+
 	if p.Err() != nil {
 		t.Fatalf("expected nil Err(), got %v", p.Err())
 	}
 
 	// Descriptor copy isolation.
 	dCopy := p.Descriptor()
+
 	dCopy.Custom["tier"] = "mutated"
 	if p.Descriptor().Custom["tier"] != "core" {
 		t.Fatal("Descriptor() did not clone Custom map")
@@ -139,22 +150,26 @@ func TestPluginLifecycleAndLookup(t *testing.T) {
 	if !ok || val != "ok-provider" {
 		t.Fatalf("expected Provider symbol, got %v, %v", val, ok)
 	}
+
 	val2, ok2 := p.Lookup("Provider")
 	if !ok2 || val2 != "ok-provider" {
 		t.Fatalf("expected cached Provider symbol, got %v, %v", val2, ok2)
 	}
+
 	if _, ok := p.Lookup("Missing"); ok {
 		t.Fatal("expected missing symbol to return false")
 	}
 
 	failErr := errors.New("boom")
 	setState(proteus.StateFailed, failErr)
+
 	if p.State() != proteus.StateFailed || p.State().String() != "failed" || !errors.Is(p.Err(), failErr) {
 		t.Fatalf("unexpected state after MarkFailed: %v, err=%v", p.State(), p.Err())
 	}
 
 	unloadErr := errors.New("close failed")
 	setState(proteus.StateUnloaded, unloadErr)
+
 	if p.State() != proteus.StateUnloaded || p.State().String() != "unloaded" || !errors.Is(p.Err(), unloadErr) {
 		t.Fatalf("unexpected state after MarkUnloaded: %v, err=%v", p.State(), p.Err())
 	}
@@ -164,6 +179,7 @@ func TestPluginLifecycleAndLookup(t *testing.T) {
 	if !fp.Unsigned() || fp.State() != proteus.StateFailed {
 		t.Fatalf("unexpected failed plugin: unsigned=%v state=%v", fp.Unsigned(), fp.State())
 	}
+
 	if _, ok := fp.Lookup("Provider"); ok {
 		t.Fatal("expected false Lookup on nil symbols")
 	}
@@ -175,18 +191,21 @@ func TestEnumsReportsAndNoopObserver(t *testing.T) {
 	if proteus.State(99).String() != "unknown" {
 		t.Fatal("expected unknown state string")
 	}
+
 	if proteus.UnsignedReject.String() != "reject" ||
 		proteus.UnsignedWarn.String() != "warn" ||
 		proteus.UnsignedAllow.String() != "allow" ||
 		proteus.UnsignedPolicy(99).String() != "unknown" {
 		t.Fatal("unexpected UnsignedPolicy strings")
 	}
+
 	if proteus.VersionEnforce.String() != "enforce" ||
 		proteus.VersionWarn.String() != "warn" ||
 		proteus.VersionIgnore.String() != "ignore" ||
 		proteus.VersionPolicy(99).String() != "unknown" {
 		t.Fatal("unexpected VersionPolicy strings")
 	}
+
 	if proteus.StatusServing.String() != "serving" ||
 		proteus.StatusDegraded.String() != "degraded" ||
 		proteus.StatusNotServing.String() != "not_serving" ||
@@ -198,8 +217,10 @@ func TestEnumsReportsAndNoopObserver(t *testing.T) {
 	if emptyReport.Err() != nil {
 		t.Fatalf("expected nil Err() on empty LoadReport, got %v", emptyReport.Err())
 	}
+
 	errA := errors.New("errA")
 	errB := errors.New("errB")
+
 	report := proteus.LoadReport{
 		Failed: []proteus.CandidateReport{
 			{Source: "a.so", Err: errA},

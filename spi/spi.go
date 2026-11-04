@@ -56,20 +56,24 @@ type SkipEvent struct {
 // [WithRequireVersion]), and implement T.
 func Providers[T any](reg Registry, contract string, opts ...Option) iter.Seq2[T, *proteus.Plugin] {
 	cfg := newOptions(opts...)
+
 	symName := cfg.symbol
 	if symName == "" {
 		symName = contract
 	}
+
 	verSymName := symName + sdk.SymbolSPIVersion
 
 	return func(yield func(T, *proteus.Plugin) bool) {
 		if reg == nil {
 			return
 		}
+
 		for p, rawSym := range reg.LookupAll(symName) {
 			if !checkVersion(p, contract, symName, verSymName, cfg) {
 				continue
 			}
+
 			provider, ok := unwrapSymbol[T](rawSym)
 			if !ok {
 				emitSkip(cfg, SkipEvent{
@@ -85,8 +89,10 @@ func Providers[T any](reg Registry, contract string, opts ...Option) iter.Seq2[T
 						*new(T),
 					),
 				})
+
 				continue
 			}
+
 			if !yield(provider, p) {
 				return
 			}
@@ -98,10 +104,12 @@ func checkVersion(p *proteus.Plugin, contract, symName, verSymName string, cfg *
 	if cfg.major < 0 && cfg.minMinor < 0 && !cfg.requireVersion {
 		return true
 	}
+
 	rawVer, ok := p.Lookup(verSymName)
 	if !ok {
 		rawVer, ok = p.Lookup(sdk.SymbolSPIVersion)
 	}
+
 	if !ok {
 		if cfg.requireVersion {
 			emitSkip(cfg, SkipEvent{
@@ -116,8 +124,10 @@ func checkVersion(p *proteus.Plugin, contract, symName, verSymName string, cfg *
 					verSymName,
 				),
 			})
+
 			return false
 		}
+
 		return true
 	}
 
@@ -135,6 +145,7 @@ func checkVersion(p *proteus.Plugin, contract, symName, verSymName string, cfg *
 				verSymName,
 			),
 		})
+
 		return false
 	}
 
@@ -152,6 +163,7 @@ func checkVersion(p *proteus.Plugin, contract, symName, verSymName string, cfg *
 				contract,
 			),
 		})
+
 		return false
 	}
 
@@ -172,8 +184,10 @@ func checkVersion(p *proteus.Plugin, contract, symName, verSymName string, cfg *
 				cfg.minMinor,
 			),
 		})
+
 		return false
 	}
+
 	return true
 }
 
@@ -191,11 +205,13 @@ func unwrapSPIVersion(raw any) (sdk.SPIVersion, bool) {
 		if v == nil {
 			return sdk.SPIVersion{}, false
 		}
+
 		return *v, true
 	case **sdk.SPIVersion:
 		if v == nil || *v == nil {
 			return sdk.SPIVersion{}, false
 		}
+
 		return **v, true
 	default:
 		return sdk.SPIVersion{}, false
@@ -214,7 +230,9 @@ func unwrapSymbol[T any](raw any) (T, bool) {
 			return v, true
 		}
 	}
+
 	var zero T
+
 	return zero, false
 }
 
@@ -223,6 +241,7 @@ func nilProvider(v any) bool {
 	if !value.IsValid() {
 		return true
 	}
+
 	switch value.Kind() {
 	case reflect.Chan, reflect.Func, reflect.Interface, reflect.Map, reflect.Pointer, reflect.Slice:
 		return value.IsNil()

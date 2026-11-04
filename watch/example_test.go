@@ -29,9 +29,11 @@ func ExampleWatcher() {
 	if err != nil {
 		panic(err)
 	}
+
 	if err := w.Start(context.Background()); err != nil {
 		panic(err)
 	}
+
 	fmt.Println(w.Running())
 	_ = w.Stop()
 	fmt.Println(w.Running())

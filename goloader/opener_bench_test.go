@@ -15,6 +15,7 @@ import (
 
 func BenchmarkOpenerCached(b *testing.B) {
 	workDir := filepath.Join(b.TempDir(), "snaps")
+
 	opener, err := goloader.New(workDir,
 		goloader.WithOpenFunc(func(context.Context, string) (proteus.Symbols, error) {
 			return stubSymbols{"Descriptor": "ok"}, nil
@@ -23,10 +24,12 @@ func BenchmarkOpenerCached(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	cand, h := makeCandidate("bench.so", make([]byte, 4096))
 	ctx := context.Background()
 
 	b.ReportAllocs()
+
 	for b.Loop() {
 		if _, err := opener.Open(ctx, cand, h, 0); err != nil {
 			b.Fatal(err)

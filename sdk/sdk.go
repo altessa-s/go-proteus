@@ -92,20 +92,24 @@ func depInfoFromBuildInfo(bi *debug.BuildInfo, ok bool) DepInfo {
 	if !ok || bi == nil {
 		return DepInfo{}
 	}
+
 	deps := make([]ModDep, 0, len(bi.Deps))
 	for _, d := range bi.Deps {
 		if d == nil {
 			continue
 		}
+
 		mod := d
 		if mod.Replace != nil {
 			mod = mod.Replace
 		}
+
 		deps = append(deps, ModDep{
 			Path:    mod.Path,
 			Version: mod.Version,
 		})
 	}
+
 	return DepInfo{
 		GoVersion: bi.GoVersion,
 		MainPath:  bi.Main.Path,
@@ -119,6 +123,7 @@ func (d DepInfo) Map() map[string]string {
 	for _, dep := range d.Deps {
 		m[dep.Path] = dep.Version
 	}
+
 	return m
 }
 
@@ -128,8 +133,10 @@ func UnwrapAll(err error) []error {
 	if err == nil {
 		return nil
 	}
+
 	var out []error
 	unwrapInto(err, &out)
+
 	return out
 }
 
@@ -143,6 +150,7 @@ func unwrapInto(err error, out *[]error) {
 					unwrapInto(child, out)
 				}
 			}
+
 			return
 		case interface{ Unwrap() error }:
 			err = u.Unwrap()
@@ -159,10 +167,13 @@ func AsViaUnwrapAll[T error](err error) (T, bool) {
 		if target, ok := candidate.(T); ok {
 			return target, true
 		}
+
 		if target, ok := errors.AsType[T](candidate); ok {
 			return target, true
 		}
 	}
+
 	var zero T
+
 	return zero, false
 }

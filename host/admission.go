@@ -18,12 +18,15 @@ func (m *Manager) admitCandidate(ctx context.Context, cand proteus.Candidate, re
 	if cand.Err != nil {
 		report.Failed = append(report.Failed, proteus.CandidateReport{Source: cand.ID, Err: cand.Err})
 		m.observer.Admitted(proteus.AdmissionEvent{Source: cand.ID, Outcome: proteus.OutcomeRejected, Err: cand.Err})
+
 		return
 	}
+
 	if len(cand.Signature) > 0 && m.verifier != nil {
 		m.admitSigned(ctx, cand, report)
 		return
 	}
+
 	if len(cand.Signature) == 0 {
 		if m.unsigned != proteus.UnsignedWarn && m.unsigned != proteus.UnsignedAllow {
 			err := fmt.Errorf("%w: %s has no detached .sig envelope", proteus.ErrSignatureMissing, cand.ID)
@@ -38,9 +41,12 @@ func (m *Manager) admitCandidate(ctx context.Context, cand proteus.Candidate, re
 				Outcome:  proteus.OutcomeRejected,
 				Err:      err,
 			})
+
 			return
 		}
+
 		m.admitUnsigned(ctx, cand, report)
+
 		return
 	}
 	// Candidate has a signature file, but no verifier was configured in unsigned dev mode.
@@ -61,6 +67,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 			Outcome: proteus.OutcomeRejected,
 			Err:     err,
 		})
+
 		return
 	}
 
@@ -89,6 +96,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 			Outcome: proteus.OutcomeSkipped,
 			Err:     skipErr,
 		})
+
 		return
 	}
 
@@ -110,6 +118,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 			Outcome: proteus.OutcomeSkipped,
 			Err:     qErr,
 		})
+
 		return
 	}
 
@@ -117,6 +126,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 	if _, revoked := m.revoked[hash]; revoked {
 		revErr := fmt.Errorf("%w: %s (%s)", proteus.ErrRevoked, name, hash)
 		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, revErr, report)
+
 		return
 	}
 
@@ -131,6 +141,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 			m.goarch,
 		)
 		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, platErr, report)
+
 		return
 	}
 
@@ -152,6 +163,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 			Outcome: proteus.OutcomeSkipped,
 			Err:     disErr,
 		})
+
 		return
 	}
 
@@ -173,6 +185,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 			Outcome: proteus.OutcomeRejected,
 			Err:     dupErr,
 		})
+
 		return
 	}
 
@@ -207,13 +220,17 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 				Outcome: proteus.OutcomeRejected,
 				Err:     err,
 			})
+
 			return
 		}
+
 		qHash := hash
 		if proteus.IsValidSHA256Hex(opened.SHA256) {
 			qHash = opened.SHA256
 		}
+
 		m.quarantineAndFail(cand.ID, name, ver, qHash, keyID, false, err, report)
+
 		return
 	}
 
@@ -226,11 +243,14 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 			hash,
 			manifest.Size,
 		)
+
 		qHash := hash
 		if proteus.IsValidSHA256Hex(opened.SHA256) {
 			qHash = opened.SHA256
 		}
+
 		m.quarantineAndFail(cand.ID, name, ver, qHash, keyID, false, mmErr, report)
+
 		return
 	}
 
@@ -238,6 +258,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 	if err != nil {
 		m.recordFailedPlugin(sdk.Descriptor{Name: name, Version: ver}, manifest, cand.ID, hash, err)
 		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, err, report)
+
 		return
 	}
 
@@ -252,6 +273,7 @@ func (m *Manager) admitSigned(ctx context.Context, cand proteus.Candidate, repor
 		)
 		m.recordFailedPlugin(sdk.Descriptor{Name: name, Version: ver}, manifest, cand.ID, hash, mmErr)
 		m.quarantineAndFail(cand.ID, name, ver, hash, keyID, false, mmErr, report)
+
 		return
 	}
 
@@ -272,6 +294,7 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 			m.quarantineAndFail(cand.ID, "", "", opened.SHA256, "", true, err, report)
 			return
 		}
+
 		report.Failed = append(report.Failed, proteus.CandidateReport{
 			Source:   cand.ID,
 			SHA256:   opened.SHA256,
@@ -285,6 +308,7 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 			Outcome:  proteus.OutcomeRejected,
 			Err:      err,
 		})
+
 		return
 	}
 
@@ -306,6 +330,7 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 			Outcome:  proteus.OutcomeSkipped,
 			Err:      skipErr,
 		})
+
 		return
 	}
 
@@ -324,12 +349,14 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 			Outcome:  proteus.OutcomeSkipped,
 			Err:      qErr,
 		})
+
 		return
 	}
 
 	if _, revoked := m.revoked[hash]; revoked {
 		revErr := fmt.Errorf("%w: %s (%s)", proteus.ErrRevoked, cand.ID, hash)
 		m.quarantineAndFail(cand.ID, "", "", hash, "", true, revErr, report)
+
 		return
 	}
 
@@ -361,6 +388,7 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 			Outcome:  proteus.OutcomeSkipped,
 			Err:      disErr,
 		})
+
 		return
 	}
 
@@ -383,12 +411,14 @@ func (m *Manager) admitUnsigned(ctx context.Context, cand proteus.Candidate, rep
 			Outcome:  proteus.OutcomeRejected,
 			Err:      dupErr,
 		})
+
 		return
 	}
 
 	if err := m.checkMinVersion(name, ver); err != nil {
 		m.recordFailedPlugin(resolved.descriptor, proteus.Manifest{}, cand.ID, hash, err)
 		m.quarantineAndFail(cand.ID, name, ver, hash, "", true, err, report)
+
 		return
 	}
 
@@ -436,11 +466,13 @@ func (m *Manager) finalizeAdmission(
 	now := m.now().UTC()
 	if initErr != nil {
 		m.recordFailedPlugin(desc, manifest, sourceID, hash, initErr)
+
 		if contentFailure {
 			if qEntry, added := m.quarantine.add(sourceID, hash, initErr, now); added {
 				m.observer.Quarantined(qEntry)
 			}
 		}
+
 		report.Failed = append(report.Failed, proteus.CandidateReport{
 			Source:   sourceID,
 			Name:     desc.Name,
@@ -448,18 +480,23 @@ func (m *Manager) finalizeAdmission(
 			Unsigned: unsigned,
 			Err:      initErr,
 		})
+
 		return
 	}
 
 	plugin, setState := proteus.NewManagedPlugin(desc, manifest, sourceID, hash, now, opened.Symbols)
+
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	for key, failed := range m.failed {
 		if failed.Source() == sourceID {
 			delete(m.failed, key)
 		}
 	}
+
 	delete(m.failed, desc.Name)
+
 	probes := new(sync.WaitGroup)
 	m.ready[desc.Name] = readyPlugin{
 		plugin: plugin,
@@ -470,11 +507,14 @@ func (m *Manager) finalizeAdmission(
 				probes.Wait()
 				// Cleanup gets its own budget even if the caller has already stopped waiting.
 				cleanupCtx := context.WithoutCancel(closeCtx)
+
 				if m.closeTimeout > 0 {
 					var cancel context.CancelFunc
+
 					cleanupCtx, cancel = context.WithTimeout(cleanupCtx, m.closeTimeout)
 					defer cancel()
 				}
+
 				return release(cleanupCtx)
 			})
 		},
@@ -482,6 +522,7 @@ func (m *Manager) finalizeAdmission(
 		healthFn: resolved.healthFn,
 	}
 	m.loadedHashes[hash] = desc.Name
+
 	report.Loaded = append(report.Loaded, plugin)
 }
 
@@ -492,11 +533,14 @@ func (m *Manager) quarantineAndFail(
 	report *proteus.LoadReport,
 ) {
 	now := m.now().UTC()
+
 	outcome := proteus.OutcomeRejected
 	if qEntry, added := m.quarantine.add(sourceID, hash, err, now); added {
 		outcome = proteus.OutcomeQuarantined
+
 		m.observer.Quarantined(qEntry)
 	}
+
 	report.Failed = append(report.Failed, proteus.CandidateReport{
 		Source:   sourceID,
 		Name:     name,
@@ -526,6 +570,7 @@ func (m *Manager) recordFailedPlugin(
 	now := m.now().UTC()
 	m.mu.Lock()
 	defer m.mu.Unlock()
+
 	if desc.Name == "" {
 		desc.Name = "source:" + sourceID
 	}
@@ -533,16 +578,20 @@ func (m *Manager) recordFailedPlugin(
 	if _, active := m.ready[desc.Name]; active {
 		return
 	}
+
 	for key, previous := range m.failed {
 		if previous.Source() != sourceID {
 			continue
 		}
+
 		if key == desc.Name && desc.Version == "" {
 			desc = previous.Descriptor()
 			manifest, _ = previous.Manifest()
 		}
+
 		delete(m.failed, key)
 	}
+
 	m.failed[desc.Name] = proteus.NewFailedPlugin(desc, manifest, sourceID, hash, now, err)
 }
 
@@ -550,9 +599,11 @@ func (m *Manager) checkHostMajor(pluginName string, pluginHostMajor int) error {
 	if !m.hasHostMajor || pluginHostMajor <= 0 || m.hostVersionPolicy == proteus.VersionIgnore {
 		return nil
 	}
+
 	if pluginHostMajor == m.hostMajor {
 		return nil
 	}
+
 	err := fmt.Errorf(
 		"%w: plugin %q requires host major %d, running host major is %d",
 		proteus.ErrHostVersionMismatch,
@@ -566,8 +617,10 @@ func (m *Manager) checkHostMajor(pluginName string, pluginHostMajor int) error {
 			slog.Int("plugin_host_major", pluginHostMajor),
 			slog.Int("host_major", m.hostMajor),
 		)
+
 		return nil
 	}
+
 	return err
 }
 
@@ -575,10 +628,12 @@ func (m *Manager) checkMinVersion(pluginName, rawPluginVer string) error {
 	if len(m.minVersions) == 0 || m.minVersionPolicy == proteus.VersionIgnore {
 		return nil
 	}
+
 	minVer, hasFloor := m.minVersions[pluginName]
 	if !hasFloor {
 		return nil
 	}
+
 	parsedPluginVer, err := parseSemver(rawPluginVer)
 	if err != nil {
 		vErr := fmt.Errorf("%w: plugin %q has non-semver version %q: %w", proteus.ErrBelowMinVersion, pluginName, rawPluginVer, err)
@@ -587,13 +642,17 @@ func (m *Manager) checkMinVersion(pluginName, rawPluginVer string) error {
 				slog.String("plugin", pluginName),
 				slog.String("version", rawPluginVer),
 			)
+
 			return nil
 		}
+
 		return vErr
 	}
+
 	if parsedPluginVer.compare(minVer) >= 0 {
 		return nil
 	}
+
 	vErr := fmt.Errorf(
 		"%w: plugin %q version %s is below minimum %d.%d.%d",
 		proteus.ErrBelowMinVersion,
@@ -608,7 +667,9 @@ func (m *Manager) checkMinVersion(pluginName, rawPluginVer string) error {
 			slog.String("plugin", pluginName),
 			slog.String("version", rawPluginVer),
 		)
+
 		return nil
 	}
+
 	return vErr
 }

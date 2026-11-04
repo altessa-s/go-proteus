@@ -35,10 +35,12 @@ func HashFile(path string) (string, int64, error) {
 	defer func() { _ = f.Close() }()
 
 	hasher := hash.NewSHA256Hasher()
+
 	n, err := io.Copy(hasher, f)
 	if err != nil {
 		return "", 0, fmt.Errorf("signing: hash %q: %w", path, err)
 	}
+
 	return hasher.SumHex(), n, nil
 }
 
@@ -50,22 +52,27 @@ func BuildManifest(artifactPath, name, version string, opts ...Option) (proteus.
 	}
 
 	cfg := newOptions(opts...)
+
 	goos := cfg.goos
 	if goos == "" {
 		goos = runtime.GOOS
 	}
+
 	goarch := cfg.goarch
 	if goarch == "" {
 		goarch = runtime.GOARCH
 	}
+
 	nowFn := cfg.now
 	if nowFn == nil {
 		nowFn = time.Now
 	}
+
 	issuedAt := cfg.issuedAt.UTC()
 	if issuedAt.IsZero() {
 		issuedAt = nowFn().UTC()
 	}
+
 	notAfter := cfg.notAfter.UTC()
 	if notAfter.IsZero() && cfg.ttl > 0 {
 		notAfter = issuedAt.Add(cfg.ttl)
@@ -86,6 +93,7 @@ func BuildManifest(artifactPath, name, version string, opts ...Option) (proteus.
 	if err := m.Validate(); err != nil {
 		return proteus.Manifest{}, err
 	}
+
 	return m, nil
 }
 
@@ -95,17 +103,21 @@ func SignManifest(m proteus.Manifest, signer crypto.Signer) ([]byte, error) {
 	if signer == nil {
 		return nil, errors.New("signing: signer is required")
 	}
+
 	key, err := signature.NewKey(signer.Public())
 	if err != nil {
 		return nil, err
 	}
+
 	payload, err := signature.MarshalManifest(m)
 	if err != nil {
 		return nil, err
 	}
 
 	pae := signature.PAE(proteus.ManifestPayloadType, payload)
+
 	var sigBytes []byte
+
 	switch key.Algorithm() {
 	case signature.AlgEd25519:
 		sigBytes, err = signer.Sign(rand.Reader, pae, crypto.Hash(0))
@@ -115,6 +127,7 @@ func SignManifest(m proteus.Manifest, signer crypto.Signer) ([]byte, error) {
 	default:
 		return nil, fmt.Errorf("%w: unsupported algorithm %q", signature.ErrKeyPolicy, key.Algorithm())
 	}
+
 	if err != nil {
 		return nil, fmt.Errorf("signing: sign DSSE PAE: %w", err)
 	}
@@ -129,6 +142,7 @@ func SignManifest(m proteus.Manifest, signer crypto.Signer) ([]byte, error) {
 			},
 		},
 	}
+
 	return signature.MarshalEnvelope(env)
 }
 
@@ -138,10 +152,12 @@ func SignFile(artifactPath, name, version string, signer crypto.Signer, opts ...
 	if err != nil {
 		return nil, proteus.Manifest{}, err
 	}
+
 	envBytes, err := SignManifest(m, signer)
 	if err != nil {
 		return nil, proteus.Manifest{}, err
 	}
+
 	return envBytes, m, nil
 }
 
@@ -155,7 +171,9 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	if perm == 0 {
 		perm = defaultFilePerm
 	}
+
 	cleaned := filepath.Clean(path)
+
 	dir := filepath.Dir(cleaned)
 	if err := os.MkdirAll(dir, defaultDirPerm); err != nil {
 		return fmt.Errorf("signing: create parent directory %q: %w", dir, err)
@@ -165,7 +183,9 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 	if err != nil {
 		return fmt.Errorf("signing: create temp file in %q: %w", dir, err)
 	}
+
 	tmpPath := tmp.Name()
+
 	cleanup := true
 	defer func() {
 		if cleanup {
@@ -177,20 +197,26 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 		_ = tmp.Close()
 		return fmt.Errorf("signing: chmod temp file: %w", err)
 	}
+
 	if _, err := tmp.Write(data); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("signing: write temp file: %w", err)
 	}
+
 	if err := tmp.Sync(); err != nil {
 		_ = tmp.Close()
 		return fmt.Errorf("signing: sync temp file: %w", err)
 	}
+
 	if err := tmp.Close(); err != nil {
 		return fmt.Errorf("signing: close temp file: %w", err)
 	}
+
 	if err := os.Rename(tmpPath, cleaned); err != nil {
 		return fmt.Errorf("signing: rename temp file to %q: %w", cleaned, err)
 	}
+
 	cleanup = false
+
 	return nil
 }

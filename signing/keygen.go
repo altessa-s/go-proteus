@@ -43,18 +43,21 @@ func GenerateKey(alg signature.Algorithm) (KeyPair, error) {
 	}
 
 	var signer crypto.Signer
+
 	switch alg {
 	case signature.AlgEd25519:
 		_, priv, err := ed25519.GenerateKey(rand.Reader)
 		if err != nil {
 			return KeyPair{}, fmt.Errorf("signing: generate ed25519 key: %w", err)
 		}
+
 		signer = priv
 	case signature.AlgECDSAP256:
 		priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 		if err != nil {
 			return KeyPair{}, fmt.Errorf("signing: generate ecdsa-p256 key: %w", err)
 		}
+
 		signer = priv
 	default:
 		return KeyPair{}, fmt.Errorf("%w: unsupported key generation algorithm %q", signature.ErrKeyPolicy, alg)
@@ -64,12 +67,14 @@ func GenerateKey(alg signature.Algorithm) (KeyPair, error) {
 	if err != nil {
 		return KeyPair{}, fmt.Errorf("signing: marshal PKCS#8 private key: %w", err)
 	}
+
 	privPEM := pem.EncodeToMemory(&pem.Block{Type: "PRIVATE KEY", Bytes: privDER})
 
 	pubDER, err := x509.MarshalPKIXPublicKey(signer.Public())
 	if err != nil {
 		return KeyPair{}, fmt.Errorf("signing: marshal PKIX public key: %w", err)
 	}
+
 	pubPEM := pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: pubDER})
 
 	pubKey, err := signature.NewKey(signer.Public())
@@ -92,9 +97,11 @@ func ParsePrivateKeyPEM(pemData []byte, password string) (crypto.Signer, signatu
 	if err != nil {
 		return nil, signature.Key{}, fmt.Errorf("signing: parse private key PEM: %w", err)
 	}
+
 	pubKey, err := signature.NewKey(signer.Public())
 	if err != nil {
 		return nil, signature.Key{}, err
 	}
+
 	return signer, pubKey, nil
 }

@@ -26,5 +26,6 @@ func defaultOpenPlugin(_ context.Context, path string) (proteus.Symbols, error) 
 	if err != nil {
 		return nil, err
 	}
+
 	return stdPluginSymbols{raw: p}, nil
 }

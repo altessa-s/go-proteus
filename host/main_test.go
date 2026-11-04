@@ -16,7 +16,9 @@ func TestMain(m *testing.M) {
 	code := m.Run()
 	if err := proteustest.GoroutineLeaks(); code == 0 && err != nil {
 		fmt.Fprintln(os.Stderr, err)
+
 		code = 1
 	}
+
 	os.Exit(code)
 }

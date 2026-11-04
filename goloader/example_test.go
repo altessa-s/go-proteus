@@ -19,6 +19,7 @@ func ExampleOpener() {
 		panic(err)
 	}
 	defer os.RemoveAll(tmp)
+
 	_ = os.Chmod(tmp, 0o700)
 
 	opener, err := goloader.New(tmp,
@@ -29,11 +30,14 @@ func ExampleOpener() {
 	if err != nil {
 		panic(err)
 	}
+
 	cand, h := makeCandidate("demo.so", []byte("demo-binary"))
+
 	opened, err := opener.Open(context.Background(), cand, h, 0)
 	if err != nil {
 		panic(err)
 	}
+
 	val, _ := opened.Symbols.Lookup("Hello")
 	fmt.Println(val, opened.Size)
 	// Output:

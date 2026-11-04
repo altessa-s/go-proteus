@@ -38,6 +38,7 @@ func (f fakeSymbols) Lookup(name string) (any, error) {
 	if !ok {
 		return nil, errors.New("missing")
 	}
+
 	return v, nil
 }
 
@@ -124,8 +125,11 @@ func TestProviders_D19(t *testing.T) {
 		},
 	}
 
-	var skips []spi.SkipEvent
-	var matched []string
+	var (
+		skips   []spi.SkipEvent
+		matched []string
+	)
+
 	for prov, plug := range spi.Providers[Greeter](
 		reg,
 		"Greeter",
@@ -139,12 +143,14 @@ func TestProviders_D19(t *testing.T) {
 		if prov.Greet("world") == "" {
 			t.Fatal("empty greeting")
 		}
+
 		matched = append(matched, plug.Name())
 	}
 
 	if len(matched) != 2 || matched[0] != "p-direct" || matched[1] != "p-ptr" {
 		t.Fatalf("expected [p-direct p-ptr], got %v", matched)
 	}
+
 	if len(skips) != 6 {
 		t.Fatalf("expected 6 skip events, got %d: %+v", len(skips), skips)
 	}
@@ -157,12 +163,14 @@ func TestProviders_D19(t *testing.T) {
 			break
 		}
 	}
+
 	if count != 1 {
 		t.Fatalf("expected 1 iteration before break, got %d", count)
 	}
 
 	// Custom symbol + nil *sdk.SPIVersion pointer + double-pointer nil.
 	var nilVerPtr *sdk.SPIVersion
+
 	pDoubleNil := makePlugin("p-doublenil", fakeSymbols{
 		"CustomSym":           &greeterImpl{prefix: "custom"},
 		"CustomSymSPIVersion": &nilVerPtr,
@@ -171,7 +179,9 @@ func TestProviders_D19(t *testing.T) {
 		"CustomSym": nil,
 	})
 	regCustom := &fakeRegistry{plugins: []*proteus.Plugin{pFallbackVer, pDoubleNil, pNilSym}}
+
 	var customSkips []spi.SkipReason
+
 	for range spi.Providers[Greeter](
 		regCustom,
 		"Greeter",
@@ -183,6 +193,7 @@ func TestProviders_D19(t *testing.T) {
 	) {
 		t.Fatal("expected no valid providers in regCustom")
 	}
+
 	if len(customSkips) != 3 {
 		t.Fatalf("expected 3 skips in regCustom, got %v", customSkips)
 	}
@@ -201,9 +212,12 @@ func TestGuard(t *testing.T) {
 		t.Fatalf("expected nil for nil fn, got %v", err)
 	}
 
-	var gotPlugin string
-	var gotRecovered any
-	var gotStack []byte
+	var (
+		gotPlugin    string
+		gotRecovered any
+		gotStack     []byte
+	)
+
 	err := spi.Guard(ctx, "p-panic", func(context.Context) error {
 		panic("kaboom")
 	}, spi.WithOnPanic(func(pluginName string, recovered any, stack []byte) {
@@ -214,6 +228,7 @@ func TestGuard(t *testing.T) {
 	if !errors.Is(err, proteus.ErrPanicked) {
 		t.Fatalf("expected ErrPanicked, got %v", err)
 	}
+
 	if strings.Contains(err.Error(), "kaboom") {
 		t.Fatal("panic payload leaked")
 	}
@@ -224,6 +239,7 @@ func TestGuard(t *testing.T) {
 
 	cctx, cancel := context.WithCancel(ctx)
 	cancel()
+
 	if err := spi.Guard(cctx, "p1", func(context.Context) error { return nil }); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
 	}
@@ -231,6 +247,7 @@ func TestGuard(t *testing.T) {
 
 func TestMajorZeroAndMinorOnly(t *testing.T) {
 	t.Parallel()
+
 	for _, tc := range []struct {
 		name         string
 		opts         []spi.Option
@@ -244,10 +261,12 @@ func TestMajorZeroAndMinorOnly(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			p := makePlugin("p", fakeSymbols{"Greeter": &greeterImpl{}, "GreeterSPIVersion": sdk.SPIVersion{Major: tc.major, Minor: tc.minor}})
+
 			count := 0
 			for range spi.Providers[Greeter](&fakeRegistry{plugins: []*proteus.Plugin{p}}, "Greeter", tc.opts...) {
 				count++
 			}
+
 			if (count == 1) != tc.want {
 				t.Fatalf("provider count: %d", count)
 			}
@@ -257,11 +276,15 @@ func TestMajorZeroAndMinorOnly(t *testing.T) {
 
 func TestProvidersExportedVariables(t *testing.T) {
 	t.Parallel()
+
 	concrete := &greeterImpl{prefix: "hello"}
-	var nilInterface Greeter
-	var nilConcrete *greeterImpl
-	var typedNil Greeter = nilConcrete
-	var boxed any = concrete
+
+	var (
+		nilInterface Greeter
+		nilConcrete  *greeterImpl
+		typedNil     Greeter = nilConcrete
+		boxed        any     = concrete
+	)
 	for _, tc := range []struct {
 		name string
 		raw  any
@@ -279,14 +302,19 @@ func TestProvidersExportedVariables(t *testing.T) {
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			t.Parallel()
+
 			p := makePlugin("p", fakeSymbols{"Greeter": tc.raw})
+
 			var skips []spi.SkipEvent
+
 			count := 0
 			for g := range spi.Providers[Greeter](&fakeRegistry{plugins: []*proteus.Plugin{p}}, "Greeter",
 				spi.WithOnSkip(func(ev spi.SkipEvent) { skips = append(skips, ev) })) {
 				count++
+
 				require.Equal(t, "hello world", g.Greet("world"))
 			}
+
 			if tc.want {
 				require.Equal(t, 1, count)
 				require.Empty(t, skips)

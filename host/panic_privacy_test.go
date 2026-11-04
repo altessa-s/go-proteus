@@ -19,11 +19,15 @@ import (
 
 func TestLifecyclePanicPrivacy(t *testing.T) {
 	t.Parallel()
+
 	for _, hook := range []string{sdk.SymbolInit, sdk.SymbolHealth, sdk.SymbolClose} {
 		t.Run(hook, func(t *testing.T) {
 			t.Parallel()
+
 			const canary = "private-panic-canary"
+
 			var logs bytes.Buffer
+
 			src := &memSource{candidates: []proteus.Candidate{{ID: "p"}}}
 			opener := newFakeOpener()
 			opener.results["p"] = func(proteus.Candidate, string) (proteus.Opened, error) {
@@ -36,7 +40,9 @@ func TestLifecyclePanicPrivacy(t *testing.T) {
 			require.NoError(t, err)
 			report, err := m.Load(t.Context())
 			require.NoError(t, err)
+
 			var failure error
+
 			switch hook {
 			case sdk.SymbolInit:
 				failure = report.Err()
@@ -45,6 +51,7 @@ func TestLifecyclePanicPrivacy(t *testing.T) {
 			case sdk.SymbolClose:
 				failure = m.Close(t.Context())
 			}
+
 			require.ErrorIs(t, failure, proteus.ErrPanicked)
 			require.NotContains(t, failure.Error(), canary)
 			require.NoError(t, m.Close(t.Context()))

@@ -16,6 +16,7 @@ func ExampleGenerateKey() {
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println(kp.PublicKey.Algorithm(), len(kp.PublicKey.ID()))
 	// Output:
 	// ed25519 32

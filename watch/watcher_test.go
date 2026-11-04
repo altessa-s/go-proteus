@@ -33,6 +33,7 @@ func TestWatcherSettleCoalescing_D15(t *testing.T) {
 
 	synctest.Test(t, func(t *testing.T) {
 		var reloads atomic.Int32
+
 		reloader := funcReloader(func(context.Context) (proteus.LoadReport, error) {
 			reloads.Add(1)
 			return proteus.LoadReport{}, nil
@@ -55,6 +56,7 @@ func TestWatcherSettleCoalescing_D15(t *testing.T) {
 		if err := w.Start(ctx); err != nil {
 			t.Fatal(err)
 		}
+
 		if !w.Running() {
 			t.Fatal("expected Running() == true")
 		}
@@ -70,12 +72,14 @@ func TestWatcherSettleCoalescing_D15(t *testing.T) {
 
 		// At 80ms since last event, Reload must NOT have fired yet!
 		time.Sleep(80 * time.Millisecond)
+
 		if got := reloads.Load(); got != 0 {
 			t.Fatalf("expected 0 reloads before settle window elapses, got %d", got)
 		}
 
 		// Advance past the 100ms quiet settle window: exactly 1 coalesced Reload fires.
 		time.Sleep(50 * time.Millisecond)
+
 		if got := reloads.Load(); got != 1 {
 			t.Fatalf("expected exactly 1 coalesced Reload after settle window, got %d", got)
 		}
@@ -83,6 +87,7 @@ func TestWatcherSettleCoalescing_D15(t *testing.T) {
 		if err := w.Stop(); err != nil {
 			t.Fatal(err)
 		}
+
 		if w.Running() {
 			t.Fatal("expected Running() == false after Stop")
 		}
@@ -98,16 +103,20 @@ func TestWatcherFsnotifyErrorRecordingAndLifecycle(t *testing.T) {
 	if _, err := watch.New("", funcReloader(nil)); err == nil {
 		t.Fatal("expected error for empty dir")
 	}
+
 	if _, err := watch.New(dir, nil); err == nil {
 		t.Fatal("expected error for nil reloader")
 	}
+
 	if _, err := watch.New(filepath.Join(dir, "missing"), funcReloader(nil)); err == nil {
 		t.Fatal("expected error for nonexistent dir")
 	}
+
 	fileInDir := filepath.Join(dir, "file.txt")
 	if err := os.WriteFile(fileInDir, []byte("x"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, err := watch.New(fileInDir, funcReloader(func(context.Context) (proteus.LoadReport, error) {
 		return proteus.LoadReport{}, nil
 	})); err == nil {
@@ -116,6 +125,7 @@ func TestWatcherFsnotifyErrorRecordingAndLifecycle(t *testing.T) {
 
 	reloadTriggered := make(chan struct{}, 4)
 	errTriggered := make(chan error, 4)
+
 	var step atomic.Int32
 
 	reloader := funcReloader(func(context.Context) (proteus.LoadReport, error) {
@@ -163,22 +173,26 @@ func TestWatcherFsnotifyErrorRecordingAndLifecycle(t *testing.T) {
 	if err := os.WriteFile(sigPath, []byte("{}"), 0o600); err != nil {
 		t.Fatal(err)
 	}
+
 	select {
 	case <-reloadTriggered:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for fsnotify reload")
 	}
+
 	select {
 	case <-errTriggered:
 	case <-time.After(3 * time.Second):
 		t.Fatal("timed out waiting for step 1 error callback")
 	}
+
 	if w.LastErr() == nil {
 		t.Fatal("expected LastErr() to record report failure")
 	}
 
 	// Trigger step 2 (reloader returns error).
 	w.Notify("second.so")
+
 	select {
 	case <-errTriggered:
 	case <-time.After(3 * time.Second):
@@ -187,6 +201,7 @@ func TestWatcherFsnotifyErrorRecordingAndLifecycle(t *testing.T) {
 
 	// Trigger step 3 (reloader panics -> recovered as ErrPanicked).
 	w.Notify("third.so")
+
 	select {
 	case gotErr := <-errTriggered:
 		if !errors.Is(gotErr, proteus.ErrPanicked) {
@@ -203,13 +218,15 @@ func TestWatcherFsnotifyErrorRecordingAndLifecycle(t *testing.T) {
 	if err := w.Stop(); err != nil {
 		t.Fatal(err)
 	}
+
 	if err := w.Start(context.Background()); !errors.Is(err, proteus.ErrClosed) {
 		t.Fatalf("expected ErrClosed on Start after Stop, got %v", err)
 	}
 
-	// Cancelled context on Start and pointer string options.
+	// Canceled context on Start and pointer string options.
 	extPtr := ".so"
 	sigPtr := ".sig"
+
 	w2, err := watch.New(dir, reloader,
 		watch.WithExtension(&extPtr),
 		watch.WithSignatureSuffix(&sigPtr),
@@ -217,11 +234,14 @@ func TestWatcherFsnotifyErrorRecordingAndLifecycle(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	cctx, cancel := context.WithCancel(context.Background())
 	cancel()
+
 	if err := w2.Start(cctx); !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled on Start, got %v", err)
 	}
+
 	if err := w2.Stop(); err != nil {
 		t.Fatal(err)
 	}
@@ -232,23 +252,30 @@ func TestWatcherPanicPrivacy(t *testing.T) {
 	dir := t.TempDir()
 	synctest.Test(t, func(t *testing.T) {
 		const canary = "private-watcher-canary"
+
 		var logs bytes.Buffer
+
 		w, err := watch.New(dir, funcReloader(func(context.Context) (proteus.LoadReport, error) { panic(canary) }), watch.WithDisableFsnotify(), watch.WithLogger(slog.New(slog.NewTextHandler(&logs, nil))))
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		if err := w.Start(t.Context()); err != nil {
 			t.Fatal(err)
 		}
+
 		w.Notify("p.so")
 		time.Sleep(time.Second)
 		synctest.Wait()
+
 		if err := w.Stop(); err != nil {
 			t.Fatal(err)
 		}
+
 		if !errors.Is(w.LastErr(), proteus.ErrPanicked) {
 			t.Fatalf("unexpected error: %v", w.LastErr())
 		}
+
 		if strings.Contains(w.LastErr().Error(), canary) || strings.Contains(logs.String(), canary) {
 			t.Fatal("panic payload leaked")
 		}

@@ -140,6 +140,7 @@ func NewPlugin(
 	if desc.Custom != nil {
 		clonedDesc.Custom = maps.Clone(desc.Custom)
 	}
+
 	p := &Plugin{
 		descriptor: clonedDesc,
 		manifest:   manifest,
@@ -150,6 +151,7 @@ func NewPlugin(
 		rawSymbols: symbols,
 	}
 	p.state.Store(int32(StateReady))
+
 	return p
 }
 
@@ -164,6 +166,7 @@ func NewFailedPlugin(
 ) *Plugin {
 	p := NewPlugin(desc, manifest, source, sha256, loadedAt, nil)
 	p.setState(StateFailed, err)
+
 	return p
 }
 
@@ -182,6 +185,7 @@ func (p *Plugin) Descriptor() sdk.Descriptor {
 	if d.Custom != nil {
 		d.Custom = maps.Clone(d.Custom)
 	}
+
 	return d
 }
 
@@ -211,6 +215,7 @@ func (p *Plugin) Err() error {
 	if box := p.lastErr.Load(); box != nil {
 		return box.err
 	}
+
 	return nil
 }
 
@@ -225,6 +230,7 @@ func (p *Plugin) setState(state State, err error) {
 	if err != nil {
 		p.lastErr.Store(&errBox{err: err})
 	}
+
 	p.state.Store(int32(state))
 }
 
@@ -235,11 +241,14 @@ func (p *Plugin) Lookup(name string) (any, bool) {
 		entry, _ := v.(symbolEntry)
 		return entry.val, entry.ok
 	}
+
 	if p.rawSymbols == nil {
 		return nil, false
 	}
+
 	val, err := p.rawSymbols.Lookup(name)
 	entry := symbolEntry{val: val, ok: err == nil}
 	p.cache.Store(name, entry)
+
 	return entry.val, entry.ok
 }

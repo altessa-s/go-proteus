@@ -29,6 +29,7 @@ func (e *asResponderErr) As(target any) bool {
 		*p = e.target
 		return true
 	}
+
 	return false
 }
 
@@ -65,10 +66,12 @@ func TestNewDepInfoFromBuild(t *testing.T) {
 			},
 		},
 	}
+
 	fromBI := depInfoFromBuildInfo(bi, true)
 	if fromBI.GoVersion != "go1.27.3" || fromBI.MainPath != "example.com/plugin" {
 		t.Fatalf("unexpected DepInfo header: %+v", fromBI)
 	}
+
 	m := fromBI.Map()
 	if len(m) != 2 || m["example.com/a"] != "v1.0.0" || m["example.com/b-fork"] != "v1.0.1" {
 		t.Fatalf("unexpected DepInfo.Map(): %v", m)
@@ -100,6 +103,7 @@ func TestUnwrapAllAndAsViaUnwrapAll(t *testing.T) {
 	}
 
 	responder := fmt.Errorf("outer: %w", &asResponderErr{target: &customErr{code: 99, msg: "via-as"}})
+
 	foundViaAs, ok := AsViaUnwrapAll[*customErr](responder)
 	if !ok || foundViaAs == nil || foundViaAs.code != 99 {
 		t.Fatalf("expected customErr{code:99} via As, got %v, %v", foundViaAs, ok)
@@ -108,6 +112,7 @@ func TestUnwrapAllAndAsViaUnwrapAll(t *testing.T) {
 	if _, ok := AsViaUnwrapAll[*customErr](leaf2); ok {
 		t.Fatal("expected false when target type is absent")
 	}
+
 	if _, ok := AsViaUnwrapAll[*customErr](nil); ok {
 		t.Fatal("expected false for nil error")
 	}
