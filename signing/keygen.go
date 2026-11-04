@@ -14,9 +14,9 @@ import (
 	"encoding/pem"
 	"fmt"
 
-	"github.com/altessa-s/go-proteus/signature"
-
 	"github.com/altessa-s/go-tlsutils"
+
+	"github.com/altessa-s/go-proteus/signature"
 )
 
 // KeyPair holds a generated private signing key, its validated public [signature.Key], and their
