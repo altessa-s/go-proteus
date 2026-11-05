@@ -5,8 +5,8 @@ go 1.27.0
 toolchain go1.27.3
 
 require (
-	github.com/altessa-s/go-atlas-core v0.3.1
-	github.com/altessa-s/go-tlsutils v0.2.1
+	github.com/altessa-s/go-atlas-core v0.3.3
+	github.com/altessa-s/go-tlsutils v0.2.2
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/spf13/cobra v1.10.2
 	github.com/stretchr/testify v1.12.1
