@@ -22,22 +22,27 @@ import (
 
 func BenchmarkVerifyEd25519(b *testing.B) {
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
 	pub, priv, err := ed25519.GenerateKey(rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	key, err := signature.NewKey(pub)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	ks, err := signature.NewKeySet(key)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	verifier, err := signature.NewVerifier(ks, signature.WithNow(func() time.Time { return now }))
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	m := proteus.Manifest{
 		Version:   proteus.ManifestVersion,
 		Name:      "bench",
@@ -48,12 +53,15 @@ func BenchmarkVerifyEd25519(b *testing.B) {
 		GOARCH:    "arm64",
 		IssuedAt:  now,
 	}
+
 	payload, err := signature.MarshalManifest(m)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	pae := signature.PAE(proteus.ManifestPayloadType, payload)
 	sig := ed25519.Sign(priv, pae)
+
 	raw, err := signature.MarshalEnvelope(signature.Envelope{
 		PayloadType: proteus.ManifestPayloadType,
 		Payload:     base64.StdEncoding.EncodeToString(payload),
@@ -64,7 +72,9 @@ func BenchmarkVerifyEd25519(b *testing.B) {
 	}
 
 	ctx := context.Background()
+
 	b.ReportAllocs()
+
 	for b.Loop() {
 		if _, err := verifier.Verify(ctx, raw); err != nil {
 			b.Fatal(err)
@@ -74,22 +84,27 @@ func BenchmarkVerifyEd25519(b *testing.B) {
 
 func BenchmarkVerifyECDSAP256(b *testing.B) {
 	now := time.Date(2026, 6, 1, 0, 0, 0, 0, time.UTC)
+
 	priv, err := ecdsa.GenerateKey(elliptic.P256(), rand.Reader)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	key, err := signature.NewKey(&priv.PublicKey)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	ks, err := signature.NewKeySet(key)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	verifier, err := signature.NewVerifier(ks, signature.WithNow(func() time.Time { return now }))
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	m := proteus.Manifest{
 		Version:   proteus.ManifestVersion,
 		Name:      "bench",
@@ -100,16 +115,20 @@ func BenchmarkVerifyECDSAP256(b *testing.B) {
 		GOARCH:    "arm64",
 		IssuedAt:  now,
 	}
+
 	payload, err := signature.MarshalManifest(m)
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	pae := signature.PAE(proteus.ManifestPayloadType, payload)
 	digest := sha256.Sum256(pae)
+
 	sig, err := ecdsa.SignASN1(rand.Reader, priv, digest[:])
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	raw, err := signature.MarshalEnvelope(signature.Envelope{
 		PayloadType: proteus.ManifestPayloadType,
 		Payload:     base64.StdEncoding.EncodeToString(payload),
@@ -120,7 +139,9 @@ func BenchmarkVerifyECDSAP256(b *testing.B) {
 	}
 
 	ctx := context.Background()
+
 	b.ReportAllocs()
+
 	for b.Loop() {
 		if _, err := verifier.Verify(ctx, raw); err != nil {
 			b.Fatal(err)

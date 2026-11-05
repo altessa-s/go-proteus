@@ -37,6 +37,7 @@ func ExampleManager() {
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println(len(report.Loaded), report.Loaded[0].Name())
 	// Output:
 	// 1 demo

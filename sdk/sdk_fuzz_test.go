@@ -21,7 +21,9 @@ func FuzzUnwrapAll(f *testing.F) {
 		if len(ops) > 64 {
 			ops = ops[:64]
 		}
+
 		var current error
+
 		for i, op := range ops {
 			switch op % 3 {
 			case 0:
@@ -44,10 +46,12 @@ func FuzzUnwrapAll(f *testing.F) {
 				}
 			}
 		}
+
 		got := sdk.UnwrapAll(current)
 		if current == nil && len(got) != 0 {
 			t.Fatalf("expected empty slice for nil error, got %d", len(got))
 		}
+
 		if current != nil && len(got) == 0 {
 			t.Fatal("expected non-empty slice for non-nil error")
 		}

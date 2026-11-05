@@ -63,11 +63,13 @@ func (r LoadReport) Err() error {
 	if len(r.Failed) == 0 {
 		return nil
 	}
+
 	errs := make([]error, 0, len(r.Failed))
 	for _, f := range r.Failed {
 		if f.Err != nil {
 			errs = append(errs, f.Err)
 		}
 	}
+
 	return errors.Join(errs...)
 }

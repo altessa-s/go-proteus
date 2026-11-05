@@ -43,22 +43,27 @@ func newInspectCmd() *cobra.Command {
 				if err != nil {
 					return fmt.Errorf("read %q: %w", path, err)
 				}
+
 				env, err := signature.UnmarshalEnvelope(data)
 				if err != nil {
 					return err
 				}
+
 				rawManifest, err := base64.StdEncoding.DecodeString(env.Payload)
 				if err != nil {
 					return fmt.Errorf("decode envelope payload: %w", err)
 				}
+
 				manifest, err := signature.UnmarshalManifest(rawManifest)
 				if err != nil {
 					return err
 				}
+
 				keyIDs := make([]string, 0, len(env.Signatures))
 				for _, sig := range env.Signatures {
 					keyIDs = append(keyIDs, sig.KeyID)
 				}
+
 				out, err := json.Marshal(
 					envelopeInspection{
 						PayloadType: env.PayloadType,
@@ -70,7 +75,9 @@ func newInspectCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
+
 				_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\n", out)
+
 				return nil
 			}
 
@@ -78,6 +85,7 @@ func newInspectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			out, err := json.Marshal(
 				binaryInspection{
 					Path:   path,
@@ -89,9 +97,12 @@ func newInspectCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "%s\n", out)
+
 			return nil
 		},
 	}
+
 	return cmd
 }

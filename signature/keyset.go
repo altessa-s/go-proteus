@@ -65,11 +65,14 @@ func NewKey(pub crypto.PublicKey) (Key, error) {
 	if err != nil {
 		return Key{}, err
 	}
+
 	der, err := x509.MarshalPKIXPublicKey(normalizedPub)
 	if err != nil {
 		return Key{}, fmt.Errorf("%w: marshal PKIX public key: %w", ErrKeyPolicy, err)
 	}
+
 	sum := sha256.Sum256(der)
+
 	return Key{
 		id:  hex.EncodeToString(sum[:16]),
 		alg: alg,
@@ -83,23 +86,29 @@ func validatePublicKey(pub crypto.PublicKey) (Algorithm, crypto.PublicKey, error
 		if len(k) != ed25519.PublicKeySize {
 			return "", nil, fmt.Errorf("%w: ed25519 public key must be %d bytes, got %d", ErrKeyPolicy, ed25519.PublicKeySize, len(k))
 		}
+
 		cloned := slices.Clone(k)
+
 		return AlgEd25519, cloned, nil
 	case *ecdsa.PublicKey:
 		if k == nil {
 			return "", nil, fmt.Errorf("%w: nil ecdsa public key", ErrKeyPolicy)
 		}
+
 		if k.Curve != elliptic.P256() {
 			return "", nil, fmt.Errorf("%w: unsupported ecdsa curve (only P-256 is allowed)", ErrKeyPolicy)
 		}
+
 		encoded, err := k.Bytes()
 		if err != nil {
 			return "", nil, fmt.Errorf("%w: invalid P-256 public key point: %w", ErrKeyPolicy, err)
 		}
+
 		cloned, err := ecdsa.ParseUncompressedPublicKey(elliptic.P256(), encoded)
 		if err != nil {
 			return "", nil, fmt.Errorf("%w: copy P-256 public key: %w", ErrKeyPolicy, err)
 		}
+
 		return AlgECDSAP256, cloned, nil
 	default:
 		return "", nil, fmt.Errorf("%w: unsupported public key type %T (only Ed25519 and ECDSA P-256 are allowed)", ErrKeyPolicy, pub)
@@ -113,9 +122,11 @@ func ParsePublicKeyPEM(pemBytes []byte) (Key, error) {
 	if err != nil {
 		return Key{}, err
 	}
+
 	if len(keys) != 1 {
 		return Key{}, fmt.Errorf("%w: expected exactly 1 PEM public key block, got %d", ErrKeyPolicy, len(keys))
 	}
+
 	return keys[0], nil
 }
 
@@ -123,46 +134,61 @@ func ParsePublicKeyPEM(pemBytes []byte) (Key, error) {
 // Only ASCII space, tab, CR and LF are permitted before, between, or after blocks.
 func ParsePublicKeysPEM(pemBytes []byte) ([]Key, error) {
 	rest := pemBytes
+
 	var keys []Key
+
 	for {
 		// Only ASCII space, tab, CR and LF may separate trust anchors.
 		rest = bytes.TrimLeft(rest, " \t\r\n")
 		if len(rest) == 0 {
 			break
 		}
-		const begin = "-----BEGIN PUBLIC KEY-----"
-		const end = "-----END PUBLIC KEY-----"
+
+		const (
+			begin = "-----BEGIN PUBLIC KEY-----"
+			end   = "-----END PUBLIC KEY-----"
+		)
+
 		if !bytes.HasPrefix(rest, []byte(begin)) {
 			return nil, fmt.Errorf("%w: expected PUBLIC KEY block", ErrKeyPolicy)
 		}
+
 		endIndex := bytes.Index(rest, []byte(end))
 		if endIndex < 0 {
 			return nil, fmt.Errorf("%w: incomplete PUBLIC KEY block", ErrKeyPolicy)
 		}
+
 		endIndex += len(end)
 		encoded := rest[:endIndex]
 		// Decode only the first block: pem.Decode otherwise skips malformed blocks.
 		if bytes.Contains(encoded[len(begin):], []byte("-----BEGIN")) {
 			return nil, fmt.Errorf("%w: nested PEM block", ErrKeyPolicy)
 		}
+
 		block, remainder := pem.Decode(encoded)
 		if block == nil || len(remainder) != 0 {
 			return nil, fmt.Errorf("%w: malformed PUBLIC KEY block", ErrKeyPolicy)
 		}
+
 		rest = rest[endIndex:]
+
 		pub, err := x509.ParsePKIXPublicKey(block.Bytes)
 		if err != nil {
 			return nil, fmt.Errorf("%w: parse PKIX public key: %w", ErrKeyPolicy, err)
 		}
+
 		key, err := NewKey(pub)
 		if err != nil {
 			return nil, err
 		}
+
 		keys = append(keys, key)
 	}
+
 	if len(keys) == 0 {
 		return nil, fmt.Errorf("%w: no PEM public key blocks found", ErrKeyPolicy)
 	}
+
 	return keys, nil
 }
 
@@ -173,8 +199,10 @@ func (k Key) WithValidity(notBefore, notAfter time.Time) (Key, error) {
 	if !notBefore.IsZero() && !notAfter.IsZero() && !notAfter.After(notBefore) {
 		return Key{}, fmt.Errorf("%w: key notAfter must be after notBefore", ErrKeyPolicy)
 	}
+
 	k.notBefore = notBefore.UTC()
 	k.notAfter = notAfter.UTC()
+
 	return k, nil
 }
 
@@ -201,9 +229,11 @@ func (k Key) ValidAt(t time.Time) bool {
 	if !k.notBefore.IsZero() && t.Before(k.notBefore) {
 		return false
 	}
+
 	if !k.notAfter.IsZero() && t.After(k.notAfter) {
 		return false
 	}
+
 	return true
 }
 
@@ -220,26 +250,33 @@ func NewKeySet(keys ...Key) (*KeySet, error) {
 	if len(keys) == 0 {
 		return nil, ErrEmptyKeySet
 	}
+
 	byID := make(map[string]Key, len(keys))
+
 	ordered := make([]Key, 0, len(keys))
 	for _, k := range keys {
 		validated, err := NewKey(k.pub)
 		if err != nil {
 			return nil, err
 		}
+
 		if k.id != validated.id || k.alg != validated.alg {
 			return nil, fmt.Errorf("%w: key metadata does not match public key", ErrKeyPolicy)
 		}
+
 		validated, err = validated.WithValidity(k.notBefore, k.notAfter)
 		if err != nil {
 			return nil, err
 		}
+
 		if _, exists := byID[validated.id]; exists {
 			return nil, fmt.Errorf("%w: %s", ErrDuplicateKeyID, validated.id)
 		}
+
 		byID[validated.id] = validated
 		ordered = append(ordered, validated)
 	}
+
 	return &KeySet{
 		byID: byID,
 		keys: ordered,
@@ -251,7 +288,9 @@ func (ks *KeySet) Lookup(keyID string) (Key, bool) {
 	if ks == nil {
 		return Key{}, false
 	}
+
 	k, ok := ks.byID[keyID]
+
 	return k, ok
 }
 
@@ -260,6 +299,7 @@ func (ks *KeySet) Keys() []Key {
 	if ks == nil {
 		return nil
 	}
+
 	return slices.Clone(ks.keys)
 }
 
@@ -268,5 +308,6 @@ func (ks *KeySet) Len() int {
 	if ks == nil {
 		return 0
 	}
+
 	return len(ks.keys)
 }

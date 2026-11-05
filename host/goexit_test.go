@@ -20,15 +20,18 @@ import (
 
 func TestInitGoexit(t *testing.T) {
 	t.Parallel()
+
 	for _, mapped := range []bool{false, true} {
 		name := "isolated"
 		if mapped {
 			name = "shared"
 		}
+
 		t.Run(name, func(t *testing.T) {
 			t.Parallel()
 			synctest.Test(t, func(t *testing.T) {
 				var calls atomic.Int32
+
 				unblock := make(chan struct{})
 				src := &memSource{candidates: []proteus.Candidate{{ID: "p"}}}
 				opener := newFakeOpener()
@@ -39,6 +42,7 @@ func TestInitGoexit(t *testing.T) {
 							calls.Add(1)
 							<-unblock
 							runtime.Goexit()
+
 							return nil
 						},
 					}}, nil
@@ -46,25 +50,33 @@ func TestInitGoexit(t *testing.T) {
 				create := func() *host.Manager {
 					m, err := host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow))
 					require.NoError(t, err)
+
 					return m
 				}
 				a, b := create(), create()
 				load := func(m *host.Manager) <-chan proteus.LoadReport {
 					done := make(chan proteus.LoadReport, 1)
+
 					go func() {
 						r, err := m.Load(t.Context())
 						if err != nil {
 							t.Error(err)
 						}
+
 						done <- r
 					}()
+
 					return done
 				}
 				first := load(a)
+
 				synctest.Wait()
+
 				second := load(b)
+
 				synctest.Wait()
 				close(unblock)
+
 				for _, done := range []<-chan proteus.LoadReport{first, second} {
 					r := <-done
 					require.Empty(t, r.Loaded)
@@ -72,12 +84,14 @@ func TestInitGoexit(t *testing.T) {
 					require.ErrorIs(t, r.Err(), proteus.ErrHookExited)
 					require.NotErrorIs(t, r.Err(), proteus.ErrPanicked)
 				}
+
 				for _, m := range []*host.Manager{a, b} {
 					_, ok := m.Get("p")
 					require.False(t, ok)
 					require.Len(t, m.Quarantined(), 1)
 					require.NoError(t, m.Close(t.Context()))
 				}
+
 				if mapped {
 					require.EqualValues(t, 1, calls.Load())
 					r, err := create().Load(t.Context())

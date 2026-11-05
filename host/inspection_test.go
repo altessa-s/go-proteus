@@ -32,7 +32,9 @@ func TestSharedMappedLifecycle(t *testing.T) {
 	t.Parallel()
 	src := &memSource{candidates: []proteus.Candidate{{ID: t.Name()}}}
 	opener := newFakeOpener()
+
 	var inits, closes atomic.Int32
+
 	opener.results[t.Name()] = func(proteus.Candidate, string) (proteus.Opened, error) {
 		return proteus.Opened{Mapped: true, SHA256: hashOf(t.Name()), Symbols: memSymbols{
 			sdk.SymbolDescriptor: sdk.Descriptor{Name: "shared", Version: "1.0.0"},
@@ -45,8 +47,10 @@ func TestSharedMappedLifecycle(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		return m
 	}
+
 	first, second := create(), create()
 	for _, m := range []*host.Manager{first, second} {
 		r, err := m.Load(t.Context())
@@ -54,29 +58,38 @@ func TestSharedMappedLifecycle(t *testing.T) {
 			t.Fatalf("load: %+v %v", r, err)
 		}
 	}
+
 	if inits.Load() != 1 {
 		t.Fatalf("Init calls: %d", inits.Load())
 	}
+
 	if err := first.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+
 	if closes.Load() != 0 {
 		t.Fatal("closed shared image while owned")
 	}
+
 	if p, ok := second.Get("shared"); !ok || p.State() != proteus.StateReady {
 		t.Fatal("second owner lost ready image")
 	}
+
 	if err := second.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
+
 	if closes.Load() != 1 {
 		t.Fatalf("Close calls: %d", closes.Load())
 	}
+
 	third := create()
+
 	r, err := third.Load(t.Context())
 	if err != nil || !errors.Is(r.Err(), proteus.ErrAlreadyLoaded) {
 		t.Fatalf("terminal image admitted: %+v %v", r, err)
 	}
+
 	if inits.Load() != 1 {
 		t.Fatal("reinitialized terminal image")
 	}
@@ -84,10 +97,15 @@ func TestSharedMappedLifecycle(t *testing.T) {
 
 func TestCallbacksCanReadRegistryAndRuntimeQuarantine(t *testing.T) {
 	t.Parallel()
+
 	src := &memSource{candidates: []proteus.Candidate{{ID: "dep"}, {ID: "consumer"}}}
 	opener := newFakeOpener()
-	var m *host.Manager
-	var closes int
+
+	var (
+		m      *host.Manager
+		closes int
+	)
+
 	for _, name := range []string{"dep", "consumer"} {
 		opener.results[name] = func(proteus.Candidate, string) (proteus.Opened, error) {
 			return proteus.Opened{SHA256: hashOf(name), Symbols: memSymbols{
@@ -98,6 +116,7 @@ func TestCallbacksCanReadRegistryAndRuntimeQuarantine(t *testing.T) {
 							return errors.New("dependency unavailable")
 						}
 					}
+
 					return nil
 				},
 				sdk.SymbolClose: func(context.Context) error { closes++; return nil },
@@ -105,39 +124,51 @@ func TestCallbacksCanReadRegistryAndRuntimeQuarantine(t *testing.T) {
 			}}, nil
 		}
 	}
+
 	observer := callbackObserver{callback: func() { _ = slices.Collect(m.All()); _, _ = m.Get("dep") }}
+
 	var err error
+
 	m, err = host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow), host.WithObserver(observer))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	r, err := m.Load(t.Context())
 	if err != nil || len(r.Loaded) != 2 {
 		t.Fatalf("load: %+v %v", r, err)
 	}
+
 	if err := m.Quarantine("consumer"); err != nil {
 		t.Fatal(err)
 	}
+
 	if _, ok := m.Get("consumer"); ok {
 		t.Fatal("quarantined plugin still exposed")
 	}
+
 	if len(slices.Collect(m.All())) != 1 || len(slices.Collect(m.Failed())) != 1 || closes != 1 {
 		t.Fatal("inconsistent runtime quarantine")
 	}
+
 	count := 0
 	for range m.LookupAll("Provider") {
 		count++
 	}
+
 	if count != 1 {
 		t.Fatal("quarantined provider exposed")
 	}
+
 	if m.Health(t.Context()).Status != proteus.StatusDegraded {
 		t.Fatal("health ignores runtime quarantine")
 	}
+
 	r, err = m.Reload(t.Context())
 	if err != nil || len(r.Loaded) != 0 {
 		t.Fatalf("quarantine reload: %+v %v", r, err)
 	}
+
 	if err := m.Close(t.Context()); err != nil {
 		t.Fatal(err)
 	}
@@ -145,6 +176,7 @@ func TestCallbacksCanReadRegistryAndRuntimeQuarantine(t *testing.T) {
 
 func TestUnknownUnsignedPolicyRejected(t *testing.T) {
 	t.Parallel()
+
 	for _, policy := range []proteus.UnsignedPolicy{-1, 99} {
 		if _, err := host.New(&memSource{}, newFakeOpener(), host.WithUnsigned(policy)); err == nil {
 			t.Fatalf("accepted policy %d", policy)
@@ -164,19 +196,24 @@ func TestTemporaryOpenFailureCanRecover(t *testing.T) {
 		if attempt == 1 {
 			return proteus.Opened{}, errors.New("temporary storage failure")
 		}
+
 		return proteus.Opened{SHA256: hashOf("retry"), Size: 10, Symbols: memSymbols{sdk.SymbolDescriptor: sdk.Descriptor{Name: "retry", Version: "1.0.0"}}}, nil
 	}
+
 	m, err := host.New(src, opener, host.WithVerifier(signer.verifier), host.WithGoos("linux"), host.WithGoarch("arm64"))
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	r, err := m.Load(t.Context())
 	if err != nil || len(r.Failed) != 1 || len(m.Quarantined()) != 0 {
 		t.Fatalf("first load: %+v %v", r, err)
 	}
+
 	if m.Health(t.Context()).Status != proteus.StatusNotServing {
 		t.Fatal("failure missing from health")
 	}
+
 	r, err = m.Reload(t.Context())
 	if err != nil || len(r.Loaded) != 1 || len(slices.Collect(m.Failed())) != 0 {
 		t.Fatalf("retry: %+v %v", r, err)
@@ -185,6 +222,7 @@ func TestTemporaryOpenFailureCanRecover(t *testing.T) {
 
 func TestSemverPrereleaseAdmission(t *testing.T) {
 	t.Parallel()
+
 	cases := []struct {
 		version, floor string
 		accept         bool
@@ -202,10 +240,12 @@ func TestSemverPrereleaseAdmission(t *testing.T) {
 			opener.results["p"] = func(proteus.Candidate, string) (proteus.Opened, error) {
 				return proteus.Opened{SHA256: hashOf(tc.version), Symbols: memSymbols{sdk.SymbolDescriptor: sdk.Descriptor{Name: "p", Version: tc.version}}}, nil
 			}
+
 			m, err := host.New(src, opener, host.WithUnsigned(proteus.UnsignedAllow), host.WithMinVersions(map[string]string{"p": tc.floor}))
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			r, err := m.Load(t.Context())
 			if err != nil || (len(r.Loaded) == 1) != tc.accept {
 				t.Fatalf("load: %+v %v", r, err)
@@ -216,22 +256,27 @@ func TestSemverPrereleaseAdmission(t *testing.T) {
 
 func TestConcurrentMappedInitAndTerminalFailure(t *testing.T) {
 	t.Parallel()
+
 	for _, fail := range []bool{false, true} {
 		t.Run(fmt.Sprint(fail), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				src := &memSource{candidates: []proteus.Candidate{{ID: "shared"}}}
 				opener := newFakeOpener()
 				releaseInit := make(chan struct{})
+
 				var calls atomic.Int32
+
 				opener.results["shared"] = func(proteus.Candidate, string) (proteus.Opened, error) {
 					return proteus.Opened{Mapped: true, SHA256: hashOf(t.Name()), Symbols: memSymbols{
 						sdk.SymbolDescriptor: sdk.Descriptor{Name: "shared", Version: "1.0.0"},
 						sdk.SymbolInit: func(context.Context) error {
 							calls.Add(1)
 							<-releaseInit
+
 							if fail {
 								return errors.New("failed init")
 							}
+
 							return nil
 						},
 					}}, nil
@@ -241,32 +286,44 @@ func TestConcurrentMappedInitAndTerminalFailure(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+
 					return m
 				}
 				a, b := create(), create()
 				reports := make(chan proteus.LoadReport, 2)
+
 				go func() { r, _ := a.Load(t.Context()); reports <- r }()
+
 				synctest.Wait()
+
 				go func() { r, _ := b.Load(t.Context()); reports <- r }()
+
 				synctest.Wait()
+
 				if calls.Load() != 1 {
 					t.Fatalf("parallel Init calls: %d", calls.Load())
 				}
+
 				close(releaseInit)
+
 				for range 2 {
 					r := <-reports
 					if (r.Err() != nil) != fail {
 						t.Fatalf("unexpected result: %+v", r)
 					}
 				}
+
 				if err := a.Close(t.Context()); err != nil {
 					t.Fatal(err)
 				}
+
 				if err := b.Close(t.Context()); err != nil {
 					t.Fatal(err)
 				}
+
 				if fail {
 					c := create()
+
 					r, err := c.Load(t.Context())
 					if err != nil || !errors.Is(r.Err(), proteus.ErrInitFailed) || calls.Load() != 1 {
 						t.Fatalf("failed image retried: %+v %v", r, err)
@@ -279,13 +336,16 @@ func TestConcurrentMappedInitAndTerminalFailure(t *testing.T) {
 
 func TestSharedInitWaitAbandonment(t *testing.T) {
 	t.Parallel()
+
 	for _, canceled := range []bool{false, true} {
 		t.Run(fmt.Sprint(canceled), func(t *testing.T) {
 			synctest.Test(t, func(t *testing.T) {
 				src := &memSource{candidates: []proteus.Candidate{{ID: "shared"}}}
 				opener := newFakeOpener()
 				unblock := make(chan struct{})
+
 				var calls atomic.Int32
+
 				opener.results["shared"] = func(proteus.Candidate, string) (proteus.Opened, error) {
 					return proteus.Opened{Mapped: true, SHA256: hashOf(t.Name()), Symbols: memSymbols{
 						sdk.SymbolDescriptor: sdk.Descriptor{Name: "shared", Version: "1.0.0"},
@@ -297,44 +357,62 @@ func TestSharedInitWaitAbandonment(t *testing.T) {
 					if err != nil {
 						t.Fatal(err)
 					}
+
 					return m
 				}
 				owner, waiter := create(time.Hour), create(50*time.Millisecond)
 				ownerReport := make(chan proteus.LoadReport, 1)
+
 				go func() { r, _ := owner.Load(t.Context()); ownerReport <- r }()
+
 				synctest.Wait()
+
 				ctx, cancel := context.WithCancel(t.Context())
 				defer cancel()
+
 				result := make(chan proteus.LoadReport, 1)
 				start := time.Now()
+
 				go func() { r, _ := waiter.Load(ctx); result <- r }()
+
 				synctest.Wait()
+
 				want := context.DeadlineExceeded
+
 				if canceled {
 					cancel()
+
 					want = context.Canceled
 				}
+
 				r := <-result
 				if !errors.Is(r.Err(), want) {
 					t.Fatalf("wait: %+v", r)
 				}
+
 				if !canceled && time.Since(start) != 50*time.Millisecond {
 					t.Fatalf("wait duration: %v", time.Since(start))
 				}
+
 				if len(waiter.Quarantined()) != 0 {
 					t.Fatal("abandoned wait quarantined image")
 				}
+
 				close(unblock)
+
 				if r := <-ownerReport; r.Err() != nil || len(r.Loaded) != 1 {
 					t.Fatalf("owner: %+v", r)
 				}
+
 				r, err := waiter.Reload(t.Context())
 				if err != nil || r.Err() != nil || len(r.Loaded) != 1 || calls.Load() != 1 {
 					t.Fatalf("reacquire: %+v %v, Init calls %d", r, err, calls.Load())
 				}
+
 				if err := owner.Close(t.Context()); err != nil {
 					t.Fatal(err)
 				}
+
 				if err := waiter.Close(t.Context()); err != nil {
 					t.Fatal(err)
 				}

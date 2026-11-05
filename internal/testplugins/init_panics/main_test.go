@@ -12,10 +12,12 @@ import (
 func TestInitPanicsSymbol(t *testing.T) {
 	t.Parallel()
 	main()
+
 	defer func() {
 		if recover() == nil {
 			t.Fatal("expected Init to panic")
 		}
 	}()
+
 	_ = Init(context.Background())
 }

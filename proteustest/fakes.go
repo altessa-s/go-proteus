@@ -42,6 +42,7 @@ func NewMemSource(candidates ...proteus.Candidate) *MemSource {
 func (s *MemSource) SetCandidates(candidates ...proteus.Candidate) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.candidates = slices.Clone(candidates)
 }
 
@@ -49,6 +50,7 @@ func (s *MemSource) SetCandidates(candidates ...proteus.Candidate) {
 func (s *MemSource) SetError(err error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	s.err = err
 }
 
@@ -56,9 +58,11 @@ func (s *MemSource) SetError(err error) {
 func (s *MemSource) Candidates(_ context.Context) ([]proteus.Candidate, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
 	if s.err != nil {
 		return nil, s.err
 	}
+
 	return slices.Clone(s.candidates), nil
 }
 
@@ -71,6 +75,7 @@ func (m MapSymbols) Lookup(name string) (any, error) {
 	if !ok {
 		return nil, fmt.Errorf("symbol %q not found", name)
 	}
+
 	return v, nil
 }
 
@@ -88,6 +93,7 @@ type MemOpener struct {
 func NewMemOpener(byID map[string]proteus.Symbols) *MemOpener {
 	cloned := make(map[string]proteus.Symbols, len(byID))
 	maps.Copy(cloned, byID)
+
 	return &MemOpener{
 		byID:   cloned,
 		counts: make(map[string]int),
@@ -98,9 +104,11 @@ func NewMemOpener(byID map[string]proteus.Symbols) *MemOpener {
 func (o *MemOpener) SetSymbols(id string, syms proteus.Symbols) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	if o.byID == nil {
 		o.byID = make(map[string]proteus.Symbols)
 	}
+
 	o.byID[id] = syms
 }
 
@@ -108,6 +116,7 @@ func (o *MemOpener) SetSymbols(id string, syms proteus.Symbols) {
 func (o *MemOpener) SetOpenFunc(fn func(context.Context, proteus.Candidate, string) (proteus.Opened, error)) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	o.openFn = fn
 }
 
@@ -115,10 +124,12 @@ func (o *MemOpener) SetOpenFunc(fn func(context.Context, proteus.Candidate, stri
 // when non-empty, records the candidate ID, and resolves its symbols.
 func (o *MemOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 string, verifiedSize int64) (proteus.Opened, error) {
 	o.mu.Lock()
+
 	o.opened = append(o.opened, c.ID)
 	if o.counts == nil {
 		o.counts = make(map[string]int)
 	}
+
 	o.counts[c.ID]++
 	fn := o.openFn
 	syms, ok := o.byID[c.ID]
@@ -127,27 +138,34 @@ func (o *MemOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA25
 	if fn != nil {
 		return fn(ctx, c, verifiedSHA256)
 	}
+
 	if !ok {
 		return proteus.Opened{}, fmt.Errorf("no symbols registered for candidate %q", c.ID)
 	}
+
 	if c.Open == nil {
 		return proteus.Opened{}, errors.New("candidate Open is nil")
 	}
+
 	artifact, err := c.Open()
 	if err != nil {
 		return proteus.Opened{}, err
 	}
+
 	defer func() { _ = artifact.Reader.Close() }()
 
 	data, err := io.ReadAll(artifact.Reader)
 	if err != nil {
 		return proteus.Opened{}, err
 	}
+
 	sum := sha256.Sum256(data)
+
 	digest := hex.EncodeToString(sum[:])
 	if (verifiedSHA256 != "" && digest != verifiedSHA256) || (verifiedSize > 0 && int64(len(data)) != verifiedSize) {
 		return proteus.Opened{}, fmt.Errorf("%w: digest %s != %s", proteus.ErrManifestMismatch, digest, verifiedSHA256)
 	}
+
 	return proteus.Opened{
 		Symbols: syms,
 		SHA256:  digest,
@@ -159,6 +177,7 @@ func (o *MemOpener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA25
 func (o *MemOpener) OpenedIDs() []string {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	return slices.Clone(o.opened)
 }
 
@@ -166,6 +185,7 @@ func (o *MemOpener) OpenedIDs() []string {
 func (o *MemOpener) OpenCount(id string) int {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	return o.counts[id]
 }
 
@@ -188,6 +208,7 @@ func NewRecordingObserver() *RecordingObserver {
 func (o *RecordingObserver) Admitted(e proteus.AdmissionEvent) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	o.admissions = append(o.admissions, e)
 }
 
@@ -195,6 +216,7 @@ func (o *RecordingObserver) Admitted(e proteus.AdmissionEvent) {
 func (o *RecordingObserver) Initialized(e proteus.InitEvent) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	o.inits = append(o.inits, e)
 }
 
@@ -202,6 +224,7 @@ func (o *RecordingObserver) Initialized(e proteus.InitEvent) {
 func (o *RecordingObserver) Quarantined(e proteus.QuarantineEntry) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	o.quarantines = append(o.quarantines, e)
 }
 
@@ -209,6 +232,7 @@ func (o *RecordingObserver) Quarantined(e proteus.QuarantineEntry) {
 func (o *RecordingObserver) RegistryChanged(s proteus.Stats) {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	o.stats = append(o.stats, s)
 }
 
@@ -216,6 +240,7 @@ func (o *RecordingObserver) RegistryChanged(s proteus.Stats) {
 func (o *RecordingObserver) Admissions() []proteus.AdmissionEvent {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	return slices.Clone(o.admissions)
 }
 
@@ -223,6 +248,7 @@ func (o *RecordingObserver) Admissions() []proteus.AdmissionEvent {
 func (o *RecordingObserver) Inits() []proteus.InitEvent {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	return slices.Clone(o.inits)
 }
 
@@ -230,6 +256,7 @@ func (o *RecordingObserver) Inits() []proteus.InitEvent {
 func (o *RecordingObserver) Quarantines() []proteus.QuarantineEntry {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	return slices.Clone(o.quarantines)
 }
 
@@ -237,6 +264,7 @@ func (o *RecordingObserver) Quarantines() []proteus.QuarantineEntry {
 func (o *RecordingObserver) StatsHistory() []proteus.Stats {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	return slices.Clone(o.stats)
 }
 
@@ -244,6 +272,7 @@ func (o *RecordingObserver) StatsHistory() []proteus.Stats {
 func (o *RecordingObserver) Reset() {
 	o.mu.Lock()
 	defer o.mu.Unlock()
+
 	o.admissions = nil
 	o.inits = nil
 	o.quarantines = nil
@@ -255,10 +284,12 @@ func (o *RecordingObserver) Reset() {
 // [signature.Key], and [crypto.Signer].
 func MustGenerateKey(tb testing.TB, alg signature.Algorithm) (signing.KeyPair, signature.Key, crypto.Signer) {
 	tb.Helper()
+
 	pair, err := signing.GenerateKey(alg)
 	if err != nil {
 		tb.Fatalf("proteustest.MustGenerateKey(%q): %v", alg, err)
 	}
+
 	return pair, pair.PublicKey, pair.PrivateKey
 }
 
@@ -273,9 +304,11 @@ func SignedCandidate(
 	issuedAt time.Time,
 ) proteus.Candidate {
 	tb.Helper()
+
 	if issuedAt.IsZero() {
 		issuedAt = time.Date(2026, 4, 19, 12, 0, 0, 0, time.UTC)
 	}
+
 	sum := sha256.Sum256(payload)
 	digest := hex.EncodeToString(sum[:])
 	m := proteus.Manifest{
@@ -288,11 +321,14 @@ func SignedCandidate(
 		GOARCH:    runtime.GOARCH,
 		IssuedAt:  issuedAt.UTC(),
 	}
+
 	envBytes, err := signing.SignManifest(m, signer)
 	if err != nil {
 		tb.Fatalf("proteustest.SignedCandidate SignManifest: %v", err)
 	}
+
 	clonedPayload := slices.Clone(payload)
+
 	return proteus.Candidate{
 		ID: id,
 		Open: func() (proteus.Artifact, error) {

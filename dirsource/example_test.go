@@ -19,6 +19,7 @@ func ExampleSource() {
 		panic(err)
 	}
 	defer os.RemoveAll(tmp)
+
 	_ = os.Chmod(tmp, 0o700)
 
 	soPath := filepath.Join(tmp, "greeter.so")
@@ -28,10 +29,12 @@ func ExampleSource() {
 	if err != nil {
 		panic(err)
 	}
+
 	cands, err := src.Candidates(context.Background())
 	if err != nil {
 		panic(err)
 	}
+
 	fmt.Println(len(cands), cands[0].ID)
 	// Output:
 	// 1 greeter.so

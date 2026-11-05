@@ -107,33 +107,43 @@ type goListPkg struct {
 // nested modules are subject to the same rules.
 func listPackages(t *testing.T) []goListPkg {
 	t.Helper()
+
 	packages := make(map[string]*goListPkg)
+
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if d.IsDir() {
 			if d.Name() == ".git" || d.Name() == "bin" || d.Name() == "vendor" {
 				return filepath.SkipDir
 			}
+
 			return nil
 		}
+
 		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
+
 		dir := filepath.Dir(path)
+
 		p := packages[dir]
 		if p == nil {
 			p = &goListPkg{Dir: dir, ImportPath: modulePath + "/" + filepath.ToSlash(dir)}
 			if dir == "." {
 				p.ImportPath = modulePath
 			}
+
 			packages[dir] = p
 		}
+
 		parsed, err := parser.ParseFile(token.NewFileSet(), path, nil, parser.ImportsOnly)
 		if err != nil {
 			return err
 		}
+
 		for _, imp := range parsed.Imports {
 			value := strings.Trim(imp.Path.Value, `"`)
 			if strings.HasSuffix(path, "_test.go") {
@@ -142,16 +152,20 @@ func listPackages(t *testing.T) []goListPkg {
 				p.Imports = append(p.Imports, value)
 			}
 		}
+
 		p.GoFiles = append(p.GoFiles, filepath.Base(path))
+
 		return nil
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	var out []goListPkg
 	for _, p := range packages {
 		out = append(out, *p)
 	}
+
 	return out
 }
 
@@ -159,11 +173,13 @@ func relPkgPath(importPath string) string {
 	if importPath == modulePath {
 		return "."
 	}
+
 	return strings.TrimPrefix(importPath, modulePath+"/")
 }
 
 func TestPackageLayers(t *testing.T) {
 	t.Parallel()
+
 	pkgs := listPackages(t)
 	if len(pkgs) == 0 {
 		t.Fatal("go list returned no packages")
@@ -171,6 +187,7 @@ func TestPackageLayers(t *testing.T) {
 
 	for _, p := range pkgs {
 		rel := relPkgPath(p.ImportPath)
+
 		rule, ok := layers[rel]
 		if !ok {
 			t.Errorf("package %q is not registered in architecture_test.go layers table", rel)
@@ -181,19 +198,24 @@ func TestPackageLayers(t *testing.T) {
 			if rel == "sdk" && imp != "errors" && imp != "runtime/debug" {
 				t.Errorf("sdk imports %q outside its minimal ABI allowlist", imp)
 			}
+
 			if imp == "testing" && rel != "proteustest" {
 				t.Errorf("%s imports testing in production", rel)
 			}
+
 			if imp == "unsafe" {
 				t.Errorf("%s imports unsafe", rel)
 			}
+
 			if imp == modulePath || strings.HasPrefix(imp, modulePath+"/") {
 				target := relPkgPath(imp)
 				if !slices.Contains(rule.internal, target) {
 					t.Errorf("package %q imports internal package %q (allowed: %v)", rel, target, rule.internal)
 				}
+
 				continue
 			}
+
 			if isThirdParty(imp) && !matchesPrefix(imp, rule.external) {
 				t.Errorf("package %q imports disallowed external package %q (allowed: %v)", rel, imp, rule.external)
 			}
@@ -213,9 +235,11 @@ func TestSpecialImportIsolation(t *testing.T) {
 			if imp == "plugin" && rel != "goloader" {
 				t.Errorf("package %q imports stdlib \"plugin\"; only \"goloader\" may import it", rel)
 			}
+
 			if imp == "os/exec" && rel != "proteustest" && rel != "." {
 				t.Errorf("package %q imports \"os/exec\"; only \"proteustest\" (and architecture_test) may import it", rel)
 			}
+
 			if (imp == "syscall" || strings.HasPrefix(imp, "golang.org/x/sys")) && !(rel == "dirsource" && !slices.Contains(p.Imports, imp)) {
 				t.Errorf("package %q imports banned package %q (process hardening belongs at service startup)", rel, imp)
 			}
@@ -225,33 +249,40 @@ func TestSpecialImportIsolation(t *testing.T) {
 
 func TestMonolithImportDenied(t *testing.T) {
 	t.Parallel()
+
 	fset := token.NewFileSet()
 
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, walkErr error) error {
 		if walkErr != nil {
 			return walkErr
 		}
+
 		if d.IsDir() {
 			name := d.Name()
 			if name == ".git" || name == "bin" || name == "vendor" {
 				return filepath.SkipDir
 			}
+
 			return nil
 		}
+
 		if !strings.HasSuffix(path, ".go") {
 			return nil
 		}
+
 		file, err := parser.ParseFile(fset, path, nil, parser.ImportsOnly)
 		if err != nil {
 			t.Errorf("parse %s: %v", path, err)
 			return nil
 		}
+
 		for _, imp := range file.Imports {
 			val := strings.Trim(imp.Path.Value, `"`)
 			if val == "github.com/altessa-s/go-atlas" || strings.HasPrefix(val, "github.com/altessa-s/go-atlas/") {
 				t.Errorf("%s imports banned monolith package %q", path, val)
 			}
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -261,35 +292,45 @@ func TestMonolithImportDenied(t *testing.T) {
 
 func TestGoModPurity(t *testing.T) {
 	t.Parallel()
+
 	allowedModules := map[string]string{"go.mod": "testdata/root-dependencies.txt", "devtools/go.mod": "testdata/devtools-dependencies.txt"}
+
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
 		}
+
 		if d.IsDir() {
 			if d.Name() == ".git" || d.Name() == "bin" || d.Name() == "vendor" {
 				return filepath.SkipDir
 			}
+
 			return nil
 		}
+
 		if d.Name() != "go.mod" {
 			return nil
 		}
+
 		allowPath, ok := allowedModules[filepath.ToSlash(path)]
 		if !ok {
 			t.Errorf("unregistered module: %s", path)
 			return nil
 		}
+
 		data, err := os.ReadFile(allowPath)
 		if err != nil {
 			return err
 		}
+
 		allowed := strings.Fields(string(data))
 		cmd := exec.Command("go", "mod", "edit", "-json", path)
+
 		out, err := cmd.Output()
 		if err != nil {
 			return err
 		}
+
 		var mod struct {
 			Require []struct{ Path string }
 			Replace []json.RawMessage
@@ -297,14 +338,17 @@ func TestGoModPurity(t *testing.T) {
 		if err := json.Unmarshal(out, &mod); err != nil {
 			return err
 		}
+
 		if len(mod.Replace) != 0 {
 			t.Errorf("%s: replacements are forbidden", path)
 		}
+
 		for _, req := range mod.Require {
 			if !slices.Contains(allowed, req.Path) {
 				t.Errorf("%s: dependency %s is not allowed", path, req.Path)
 			}
 		}
+
 		return nil
 	})
 	if err != nil {
@@ -325,11 +369,14 @@ func TestASTConventions(t *testing.T) {
 			if strings.HasSuffix(goFile, "_test.go") {
 				continue
 			}
+
 			fullPath := filepath.Join(p.Dir, goFile)
+
 			parsed, err := parser.ParseFile(fset, fullPath, nil, 0)
 			if err != nil {
 				t.Fatalf("parse %s: %v", fullPath, err)
 			}
+
 			isGen := goFile == "options_gen.go"
 
 			for _, decl := range parsed.Decls {
@@ -341,6 +388,7 @@ func TestASTConventions(t *testing.T) {
 							t.Errorf("%s defines forbidden init() function", fullPath)
 						}
 					}
+
 					if !isGen && d.Recv == nil && strings.HasPrefix(d.Name.Name, "With") {
 						t.Errorf("%s defines hand-written option %s (must be generated by optgen in options_gen.go)", fullPath, d.Name.Name)
 					}
@@ -348,16 +396,19 @@ func TestASTConventions(t *testing.T) {
 					if d.Tok != token.VAR || isGen || isTestPlugin {
 						continue
 					}
+
 					for _, spec := range d.Specs {
 						vs, ok := spec.(*ast.ValueSpec)
 						if !ok {
 							continue
 						}
+
 						for _, ident := range vs.Names {
 							allowedState := rel == "goloader" && ident.Name == "processHandles" || rel == "host" && ident.Name == "images"
 							if !ident.IsExported() && !allowedState {
 								t.Errorf("%s declares unapproved package state %s", fullPath, ident.Name)
 							}
+
 							if ident.IsExported() && !strings.HasPrefix(ident.Name, "Err") {
 								t.Errorf("%s declares exported mutable variable %q (only Err* sentinels allowed)", fullPath, ident.Name)
 							}
@@ -395,5 +446,6 @@ func matchesPrefix(imp string, allowed []string) bool {
 			return true
 		}
 	}
+
 	return false
 }

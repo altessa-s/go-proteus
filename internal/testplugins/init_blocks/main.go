@@ -29,6 +29,7 @@ func Init(ctx context.Context) error {
 	case <-Release:
 	case <-time.After(blockDuration):
 	}
+
 	return ctx.Err()
 }
 

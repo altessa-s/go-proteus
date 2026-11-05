@@ -60,31 +60,39 @@ func New(dir string, reloader Reloader, opts ...Option) (*Watcher, error) {
 	if cleaned == "" {
 		return nil, errors.New("watch: directory path is required")
 	}
+
 	if reloader == nil {
 		return nil, errors.New("watch: reloader is required")
 	}
+
 	cleaned = filepath.Clean(cleaned)
+
 	info, err := os.Stat(cleaned)
 	if err != nil {
 		return nil, fmt.Errorf("watch: stat directory %q: %w", cleaned, err)
 	}
+
 	if !info.IsDir() {
 		return nil, fmt.Errorf("watch: %q is not a directory", cleaned)
 	}
 
 	cfg := newOptions(opts...)
+
 	settle := cfg.settle
 	if settle <= 0 {
 		settle = DefaultSettle
 	}
+
 	ext := cfg.extension
 	if ext == "" {
 		ext = DefaultExtension
 	}
+
 	sigSuffix := cfg.signatureSuffix
 	if sigSuffix == "" {
 		sigSuffix = DefaultSignatureSuffix
 	}
+
 	logger := cfg.logger
 	if logger == nil {
 		logger = slog.New(slog.NewTextHandler(io.Discard, nil))
@@ -110,27 +118,33 @@ func (w *Watcher) Start(ctx context.Context) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
+
 	w.mu.Lock()
 	if w.closed {
 		w.mu.Unlock()
 		return proteus.ErrClosed
 	}
+
 	if w.running.Load() {
 		w.mu.Unlock()
 		return errors.New("watch: watcher is already running")
 	}
 
 	var fsw *fsnotify.Watcher
+
 	if !w.disableFsnotify {
 		var err error
+
 		fsw, err = fsnotify.NewWatcher()
 		if err != nil {
 			w.mu.Unlock()
 			return fmt.Errorf("watch: create fsnotify watcher: %w", err)
 		}
+
 		if err := fsw.Add(w.dir); err != nil {
 			_ = fsw.Close()
 			w.mu.Unlock()
+
 			return fmt.Errorf("watch: watch directory %q: %w", w.dir, err)
 		}
 	}
@@ -143,6 +157,7 @@ func (w *Watcher) Start(ctx context.Context) error {
 	w.mu.Unlock()
 
 	go w.loop(runCtx, fsw, done)
+
 	return nil
 }
 
@@ -153,11 +168,14 @@ func (w *Watcher) Stop() error {
 	if w.closed {
 		done := w.done
 		w.mu.Unlock()
+
 		if done != nil {
 			<-done
 		}
+
 		return nil
 	}
+
 	w.closed = true
 	cancel := w.cancel
 	done := w.done
@@ -166,9 +184,11 @@ func (w *Watcher) Stop() error {
 	if cancel != nil {
 		cancel()
 	}
+
 	if done != nil {
 		<-done
 	}
+
 	return nil
 }
 
@@ -182,6 +202,7 @@ func (w *Watcher) LastErr() error {
 	if box := w.lastErr.Load(); box != nil {
 		return box.err
 	}
+
 	return nil
 }
 
@@ -191,6 +212,7 @@ func (w *Watcher) Notify(name string) {
 	if !w.isRelevantName(name) {
 		return
 	}
+
 	select {
 	case w.notifyCh <- name:
 	default:
@@ -200,9 +222,11 @@ func (w *Watcher) Notify(name string) {
 func (w *Watcher) loop(ctx context.Context, fsw *fsnotify.Watcher, done chan struct{}) {
 	defer func() {
 		w.running.Store(false)
+
 		if fsw != nil {
 			_ = fsw.Close()
 		}
+
 		close(done)
 	}()
 
@@ -219,21 +243,26 @@ func (w *Watcher) loop(ctx context.Context, fsw *fsnotify.Watcher, done chan str
 		timer   *time.Timer
 		timerCh <-chan time.Time
 	)
+
 	resetTimer := func() {
 		if timer == nil {
 			timer = time.NewTimer(w.settle)
 			timerCh = timer.C
+
 			return
 		}
+
 		if !timer.Stop() {
 			select {
 			case <-timer.C:
 			default:
 			}
 		}
+
 		timer.Reset(w.settle)
 		timerCh = timer.C
 	}
+
 	defer func() {
 		if timer != nil {
 			timer.Stop()
@@ -252,6 +281,7 @@ func (w *Watcher) loop(ctx context.Context, fsw *fsnotify.Watcher, done chan str
 			if !ok {
 				return
 			}
+
 			if w.isRelevantEvent(ev) {
 				resetTimer()
 			}
@@ -259,11 +289,13 @@ func (w *Watcher) loop(ctx context.Context, fsw *fsnotify.Watcher, done chan str
 			if !ok {
 				return
 			}
+
 			if fsErr != nil {
 				w.recordError(fsErr)
 			}
 		case <-timerCh:
 			timerCh = nil
+
 			w.executeReload(ctx)
 		}
 	}
@@ -273,6 +305,7 @@ func (w *Watcher) executeReload(ctx context.Context) {
 	if ctx.Err() != nil {
 		return
 	}
+
 	defer func() {
 		if r := recover(); r != nil {
 			w.recordError(fmt.Errorf("%w: reloader panicked (%T)", proteus.ErrPanicked, r))
@@ -284,9 +317,11 @@ func (w *Watcher) executeReload(ctx context.Context) {
 		w.recordError(err)
 		return
 	}
+
 	if repErr := report.Err(); repErr != nil {
 		w.recordError(repErr)
 	}
+
 	if w.onReload != nil {
 		w.onReload(report)
 	}
@@ -296,8 +331,10 @@ func (w *Watcher) recordError(err error) {
 	if err == nil {
 		return
 	}
+
 	w.lastErr.Store(&errHolder{err: err})
 	w.logger.Warn("plugin watcher error", slog.Any("err", err))
+
 	if w.onError != nil {
 		w.onError(err)
 	}
@@ -308,6 +345,7 @@ func (w *Watcher) isRelevantEvent(ev fsnotify.Event) bool {
 	if ev.Op&mask == 0 {
 		return false
 	}
+
 	return w.isRelevantName(ev.Name)
 }
 
@@ -316,6 +354,8 @@ func (w *Watcher) isRelevantName(path string) bool {
 	if strings.HasPrefix(base, ".") {
 		return false
 	}
+
 	sigExt := w.extension + w.signatureSuffix
+
 	return strings.HasSuffix(base, w.extension) || strings.HasSuffix(base, sigExt)
 }

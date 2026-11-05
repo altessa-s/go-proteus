@@ -30,6 +30,7 @@ func BenchmarkProviders(b *testing.B) {
 	reg := &fakeRegistry{plugins: []*proteus.Plugin{p}}
 
 	b.ReportAllocs()
+
 	for b.Loop() {
 		for g := range spi.Providers[Greeter](reg, "Greeter", spi.WithMajor(1)) {
 			_ = g.Greet("bench")

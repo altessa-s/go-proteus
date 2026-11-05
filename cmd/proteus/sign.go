@@ -31,26 +31,32 @@ func newSignCmd() *cobra.Command {
 		notAfterStr  string
 		outPath      string
 	)
+
 	cmd := &cobra.Command{
 		Use:   "sign <plugin.so>",
 		Short: "Sign a plugin shared object and write a detached DSSE .so.sig envelope",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			soPath := args[0]
+
 			if keyPath == "" {
 				return errors.New("--key is required")
 			}
+
 			if name == "" || version == "" {
 				return errors.New("--name and --version are required")
 			}
+
 			password, err := resolvePassword(passwordEnv, passwordFile)
 			if err != nil {
 				return err
 			}
+
 			keyBytes, err := readRegularFile(keyPath)
 			if err != nil {
 				return fmt.Errorf("read private key %q: %w", keyPath, err)
 			}
+
 			signer, pubKey, err := signing.ParsePrivateKeyPEM(keyBytes, password)
 			if err != nil {
 				return err
@@ -64,11 +70,13 @@ func newSignCmd() *cobra.Command {
 			if ttl > 0 {
 				opts = append(opts, signing.WithTTL(ttl))
 			}
+
 			if notAfterStr != "" {
 				ts, parseErr := time.Parse(time.RFC3339, notAfterStr)
 				if parseErr != nil {
 					return fmt.Errorf("parse --not-after %q: %w", notAfterStr, parseErr)
 				}
+
 				opts = append(opts, signing.WithNotAfter(ts))
 			}
 
@@ -76,15 +84,19 @@ func newSignCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+
 			targetSig := outPath
 			if targetSig == "" {
 				targetSig = soPath + ".sig"
 			}
+
 			if err := signing.WriteFileAtomic(targetSig, envBytes, outputPerm); err != nil {
 				return err
 			}
+
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "signed: %s (keyid=%s sha256=%s)\n",
 				targetSig, pubKey.ID(), manifest.SHA256)
+
 			return nil
 		},
 	}
@@ -99,6 +111,7 @@ func newSignCmd() *cobra.Command {
 	cmd.Flags().DurationVar(&ttl, "ttl", 0, "Optional manifest validity duration from issuedAt")
 	cmd.Flags().StringVar(&notAfterStr, "not-after", "", "Optional RFC3339 expiration timestamp")
 	cmd.Flags().StringVar(&outPath, "out", "", "Output signature path (defaults to <plugin.so>.sig)")
+
 	return cmd
 }
 
@@ -106,15 +119,19 @@ func resolvePassword(envName, filePath string) (string, error) {
 	if envName != "" && filePath != "" {
 		return "", errors.New("specify at most one of --password-env or --password-file")
 	}
+
 	if envName != "" {
 		return os.Getenv(envName), nil
 	}
+
 	if filePath != "" {
 		data, err := readRegularFile(filePath)
 		if err != nil {
 			return "", fmt.Errorf("read password file %q: %w", filePath, err)
 		}
+
 		return strings.TrimRight(string(data), "\r\n"), nil
 	}
+
 	return "", nil
 }

@@ -27,9 +27,11 @@ const (
 // (such as Windows or when CGO_ENABLED=0).
 func BuildPlugin(tb testing.TB, pkgDir string) string {
 	tb.Helper()
+
 	if runtime.GOOS != "linux" && runtime.GOOS != "darwin" && runtime.GOOS != "freebsd" {
 		tb.Skip("Go plugins (-buildmode=plugin) are not supported on this platform")
 	}
+
 	if !cgoEnabled {
 		tb.Skip("Go plugins (-buildmode=plugin) require cgo")
 	}
@@ -40,10 +42,12 @@ func BuildPlugin(tb testing.TB, pkgDir string) string {
 	}
 
 	coverEnabled := testing.CoverMode() != ""
+
 	outPath := filepath.Join(tb.TempDir(), filepath.Base(absDir)+".so")
 	if err := buildPlugin(tb.Context(), absDir, outPath, raceEnabled, coverEnabled); err != nil {
 		tb.Fatalf("proteustest.BuildPlugin(%q): %v", pkgDir, err)
 	}
+
 	return outPath
 }
 
@@ -52,15 +56,19 @@ func buildPlugin(ctx context.Context, absDir, outPath string, raceEnabled, cover
 	if raceEnabled {
 		args = append(args, "-race")
 	}
+
 	if coverEnabled {
 		args = append(args, "-cover")
 	}
+
 	args = append(args, "-o", outPath, ".")
 	cmd := exec.CommandContext(ctx, "go", args...)
 	cmd.Dir = absDir
+
 	output, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("go %v failed: %w\n%s", args, err, output)
 	}
+
 	return os.Chmod(outPath, pluginFilePerm)
 }

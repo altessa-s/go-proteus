@@ -18,10 +18,12 @@ import (
 
 func TestPEMParsersRejectIncompleteBundles(t *testing.T) {
 	t.Parallel()
+
 	pub, _, err := ed25519.GenerateKey(rand.Reader)
 	require.NoError(t, err)
 	der, err := x509.MarshalPKIXPublicKey(pub)
 	require.NoError(t, err)
+
 	valid := string(pem.EncodeToMemory(&pem.Block{Type: "PUBLIC KEY", Bytes: der}))
 	for _, malformed := range []string{
 		"-----BEGIN PUBLIC KEY-----\nAAAA\n",
@@ -34,10 +36,12 @@ func TestPEMParsersRejectIncompleteBundles(t *testing.T) {
 			keys, err := signature.ParsePublicKeysPEM([]byte(bundle))
 			require.ErrorIs(t, err, signature.ErrKeyPolicy)
 			require.Nil(t, keys)
+
 			_, err = signature.ParsePublicKeyPEM([]byte(bundle))
 			require.ErrorIs(t, err, signature.ErrKeyPolicy)
 		}
 	}
+
 	whitespace := " \t\r\n"
 	_, err = signature.ParsePublicKeyPEM([]byte(whitespace + valid + whitespace))
 	require.NoError(t, err)

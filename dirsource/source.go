@@ -43,23 +43,29 @@ func New(dir string, opts ...Option) (*Source, error) {
 	if cleaned == "" {
 		return nil, errors.New("dirsource: directory path is required")
 	}
+
 	cfg := newOptions(opts...)
+
 	ext := cfg.extension
 	if ext == "" {
 		ext = DefaultExtension
 	}
+
 	sigSuffix := cfg.signatureSuffix
 	if sigSuffix == "" {
 		sigSuffix = DefaultSignatureSuffix
 	}
+
 	maxSig := cfg.maxSignatureBytes
 	if maxSig <= 0 {
 		maxSig = DefaultMaxSignatureBytes
 	}
+
 	maxArt := cfg.maxArtifactBytes
 	if maxArt <= 0 {
 		maxArt = DefaultMaxArtifactBytes
 	}
+
 	return &Source{
 		dir:               filepath.Clean(cleaned),
 		checkPermissions:  !cfg.skipPermissionChecks,
@@ -90,17 +96,20 @@ func (s *Source) Candidates(ctx context.Context) ([]proteus.Candidate, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dirsource: read directory %q: %w", s.dir, err)
 	}
+
 	slices.SortFunc(entries, func(a, b os.DirEntry) int {
 		return cmp.Compare(a.Name(), b.Name())
 	})
 
 	sigExt := s.extension + s.signatureSuffix
+
 	var out []proteus.Candidate
 
 	for _, entry := range entries {
 		if err := ctx.Err(); err != nil {
 			return nil, err
 		}
+
 		name := entry.Name()
 		if strings.HasSuffix(name, sigExt) || !strings.HasSuffix(name, s.extension) || entry.IsDir() {
 			continue
@@ -111,6 +120,7 @@ func (s *Source) Candidates(ctx context.Context) ([]proteus.Candidate, error) {
 			out = append(out, proteus.Candidate{ID: name, Err: err})
 			continue
 		}
+
 		_ = f.Close()
 
 		sigBytes, err := s.readSignatureInRoot(root, name+s.signatureSuffix)
@@ -137,6 +147,7 @@ func (s *Source) openVerifiedRoot() (*os.Root, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dirsource: stat plugin directory %q: %w", s.dir, err)
 	}
+
 	if !s.followSymlinks && dirLstat.Mode()&os.ModeSymlink != 0 {
 		return nil, fmt.Errorf("%w: plugin directory %q is a symlink", proteus.ErrInsecurePermissions, s.dir)
 	}
@@ -145,13 +156,16 @@ func (s *Source) openVerifiedRoot() (*os.Root, error) {
 	if err != nil {
 		return nil, fmt.Errorf("dirsource: open root %q: %w", s.dir, err)
 	}
+
 	rootInfo, err := root.Stat(".")
 	if err != nil {
 		_ = root.Close()
 		return nil, fmt.Errorf("dirsource: stat opened root %q: %w", s.dir, err)
 	}
+
 	if s.checkPermissions && isInsecureMode(rootInfo.Mode()) {
 		_ = root.Close()
+
 		return nil, fmt.Errorf(
 			"%w: plugin directory %q has insecure permissions %04o",
 			proteus.ErrInsecurePermissions,
@@ -159,6 +173,7 @@ func (s *Source) openVerifiedRoot() (*os.Root, error) {
 			rootInfo.Mode().Perm(),
 		)
 	}
+
 	return root, nil
 }
 
@@ -167,6 +182,7 @@ func (s *Source) openVerifiedFileInRoot(root *os.Root, name string, maxBytes int
 	if err != nil {
 		return nil, nil, err
 	}
+
 	if linfo.Mode()&os.ModeSymlink != 0 && !s.followSymlinks {
 		return nil, nil, fmt.Errorf("%w: %q is a symlink", proteus.ErrInsecurePermissions, name)
 	}
@@ -181,12 +197,15 @@ func (s *Source) openVerifiedFileInRoot(root *os.Root, name string, maxBytes int
 		_ = f.Close()
 		return nil, nil, fmt.Errorf("dirsource: stat %q: %w", name, err)
 	}
+
 	if !info.Mode().IsRegular() {
 		_ = f.Close()
 		return nil, nil, fmt.Errorf("%w: %q is not a regular file", files.ErrNotRegular, name)
 	}
+
 	if s.checkPermissions && isInsecureMode(info.Mode()) {
 		_ = f.Close()
+
 		return nil, nil, fmt.Errorf(
 			"%w: %q has insecure permissions %04o",
 			proteus.ErrInsecurePermissions,
@@ -194,8 +213,10 @@ func (s *Source) openVerifiedFileInRoot(root *os.Root, name string, maxBytes int
 			info.Mode().Perm(),
 		)
 	}
+
 	if info.Size() > maxBytes {
 		_ = f.Close()
+
 		return nil, nil, fmt.Errorf(
 			"%w: %q size %d exceeds maximum %d",
 			coreio.ErrReadLimitExceeded,
@@ -204,6 +225,7 @@ func (s *Source) openVerifiedFileInRoot(root *os.Root, name string, maxBytes int
 			maxBytes,
 		)
 	}
+
 	return f, info, nil
 }
 
@@ -213,6 +235,7 @@ func (s *Source) readSignatureInRoot(root *os.Root, sigName string) ([]byte, err
 		if errors.Is(err, fs.ErrNotExist) {
 			return nil, nil
 		}
+
 		return nil, err
 	}
 	defer func() { _ = f.Close() }()
@@ -221,6 +244,7 @@ func (s *Source) readSignatureInRoot(root *os.Root, sigName string) ([]byte, err
 	if err != nil {
 		return nil, fmt.Errorf("dirsource: read signature %q: %w", sigName, err)
 	}
+
 	return data, nil
 }
 
@@ -238,6 +262,7 @@ func (s *Source) openArtifact(name string) (proteus.Artifact, error) {
 
 	rc := &rootFileCloser{file: f, root: root}
 	limited := coreio.NewLimitedReadCloser(rc, s.maxArtifactBytes)
+
 	return proteus.Artifact{
 		Reader: limited,
 		Size:   info.Size(),
@@ -256,6 +281,7 @@ func (r *rootFileCloser) Read(p []byte) (int, error) {
 func (r *rootFileCloser) Close() error {
 	fErr := r.file.Close()
 	rErr := r.root.Close()
+
 	return errors.Join(fErr, rErr)
 }
 
@@ -263,5 +289,6 @@ func isInsecureMode(mode fs.FileMode) bool {
 	if runtime.GOOS == "windows" {
 		return false
 	}
+
 	return mode.Perm()&writableByGroupOrOther != 0
 }

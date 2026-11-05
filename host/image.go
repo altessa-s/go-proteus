@@ -34,47 +34,65 @@ func acquireImage(
 		if err = initialize(); err != nil {
 			return nil, true, err
 		}
+
 		return (&imageEntry{closeFn: closeFn, refs: 1}).release, false, nil
 	}
+
 	images.Lock()
 	if entry, ok := images.entries[opened.SHA256]; ok {
 		images.Unlock()
+
 		waitCtx := ctx
+
 		if timeout > 0 {
 			var cancel context.CancelFunc
+
 			waitCtx, cancel = context.WithTimeout(ctx, timeout)
 			defer cancel()
 		}
+
 		select {
 		case <-waitCtx.Done():
 			return nil, false, waitCtx.Err()
 		case <-entry.done:
 		}
+
 		images.Lock()
 		defer images.Unlock()
+
 		if entry.err != nil {
 			return nil, true, entry.err
 		}
+
 		if entry.refs == 0 {
 			return nil, true, proteus.ErrAlreadyLoaded
 		}
+
 		entry.refs++
+
 		return entry.release, false, nil
 	}
+
 	entry := &imageEntry{done: make(chan struct{}), closeFn: closeFn}
 	images.entries[opened.SHA256] = entry
 	images.Unlock()
+
 	err = initialize()
+
 	images.Lock()
+
 	entry.err = err
 	if err == nil {
 		entry.refs = 1
 	}
+
 	close(entry.done)
 	images.Unlock()
+
 	if err != nil {
 		return nil, true, err
 	}
+
 	return entry.release, false, nil
 }
 
@@ -83,8 +101,10 @@ func (e *imageEntry) release(ctx context.Context) error {
 	e.refs--
 	last := e.refs == 0
 	images.Unlock()
+
 	if last && e.closeFn != nil {
 		return e.closeFn(ctx)
 	}
+
 	return nil
 }

@@ -42,14 +42,18 @@ func New(workDir string, opts ...Option) (*Opener, error) {
 	if cleaned == "" {
 		return nil, errors.New("goloader: workDir is required")
 	}
+
 	cleaned = filepath.Clean(cleaned)
 
 	cfg := newOptions(opts...)
+
 	maxBytes := cfg.maxArtifactBytes
 	if maxBytes <= 0 {
 		maxBytes = DefaultMaxArtifactBytes
 	}
+
 	cache := newHandleCache()
+
 	openFn := cfg.openFunc
 	if openFn == nil {
 		openFn = defaultOpenPlugin
@@ -80,9 +84,11 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 	if err := ctx.Err(); err != nil {
 		return proteus.Opened{}, err
 	}
+
 	if c.Open == nil {
 		return proteus.Opened{}, errors.New("goloader: candidate Open function is nil")
 	}
+
 	if err := ensureSecureWorkDir(o.workDir, o.checkPermissions); err != nil {
 		return proteus.Opened{}, err
 	}
@@ -130,6 +136,7 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 	if err != nil {
 		return proteus.Opened{SHA256: streamHash, Size: writtenSize}, err
 	}
+
 	if diskHash != streamHash || diskSize != writtenSize {
 		return proteus.Opened{
 			SHA256: streamHash,
@@ -144,6 +151,7 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 	if ctxErr := ctx.Err(); ctxErr != nil {
 		return proteus.Opened{}, ctxErr
 	}
+
 	syms, terminal, err := o.cache.getOrOpen(ctx, streamHash, func() (proteus.Symbols, bool, error) {
 		// Keep the exclusively created pathname: independent caches and processes may
 		// load the same digest from this work directory concurrently.
@@ -164,15 +172,18 @@ func (o *Opener) Open(ctx context.Context, c proteus.Candidate, verifiedSHA256 s
 
 func (o *Opener) streamToTempFile(r io.Reader) (string, string, int64, error) {
 	const snapshotFilePerm = 0o600
+
 	tmpFile, err := os.CreateTemp(o.workDir, ".proteus-snap-*.so")
 	if err != nil {
 		return "", "", 0, fmt.Errorf("goloader: create snapshot temp file: %w", err)
 	}
+
 	tmpPath := tmpFile.Name()
 
 	if err := tmpFile.Chmod(snapshotFilePerm); err != nil {
 		_ = tmpFile.Close()
 		_ = os.Remove(tmpPath)
+
 		return "", "", 0, fmt.Errorf("goloader: chmod snapshot temp file: %w", err)
 	}
 
@@ -186,10 +197,12 @@ func (o *Opener) streamToTempFile(r io.Reader) (string, string, int64, error) {
 		_ = os.Remove(tmpPath)
 		return "", "", 0, fmt.Errorf("goloader: stream artifact to snapshot: %w", copyErr)
 	}
+
 	if syncErr != nil {
 		_ = os.Remove(tmpPath)
 		return "", "", 0, fmt.Errorf("goloader: sync snapshot file: %w", syncErr)
 	}
+
 	if closeErr != nil {
 		_ = os.Remove(tmpPath)
 		return "", "", 0, fmt.Errorf("goloader: close snapshot file: %w", closeErr)
@@ -207,10 +220,12 @@ func rehashSnapshotFile(path string, maxBytes int64) (string, int64, error) {
 
 	limited := coreio.NewLimitedReadCloser(f, maxBytes)
 	hasher := hash.NewSHA256Hasher()
+
 	n, err := io.Copy(hasher, limited)
 	if err != nil {
 		return "", 0, fmt.Errorf("%w: re-hash snapshot: %w", proteus.ErrSnapshotModified, err)
 	}
+
 	return hasher.SumHex(), n, nil
 }
 
@@ -223,6 +238,7 @@ func invokeOpenSafe(ctx context.Context, path string, openFn OpenFunc) (syms pro
 			err = fmt.Errorf("%w: plugin package init panicked during open (%T)", proteus.ErrPanicked, r)
 		}
 	}()
+
 	return openFn(ctx, path)
 }
 
@@ -231,13 +247,16 @@ func ensureSecureWorkDir(dir string, checkPerms bool) error {
 	if err := os.MkdirAll(dir, snapshotDirPerm); err != nil {
 		return fmt.Errorf("goloader: create workDir %q: %w", dir, err)
 	}
+
 	linfo, err := os.Lstat(dir)
 	if err != nil {
 		return fmt.Errorf("goloader: stat workDir %q: %w", dir, err)
 	}
+
 	if !linfo.IsDir() {
 		return fmt.Errorf("%w: workDir %q is not a directory", proteus.ErrInsecurePermissions, dir)
 	}
+
 	if checkPerms && runtime.GOOS != "windows" {
 		mode := linfo.Mode()
 		// Group/world-writable directories without the sticky bit are rejected.
@@ -250,5 +269,6 @@ func ensureSecureWorkDir(dir string, checkPerms bool) error {
 			)
 		}
 	}
+
 	return nil
 }

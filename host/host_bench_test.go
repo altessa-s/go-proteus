@@ -20,6 +20,7 @@ func BenchmarkManagerGetAndLookup(b *testing.B) {
 		"Provider":           "instance",
 	})
 	src := &memSource{candidates: []proteus.Candidate{cand}}
+
 	mgr, err := host.New(src, opener,
 		host.WithVerifier(ts.verifier),
 		host.WithGoos("linux"),
@@ -28,16 +29,19 @@ func BenchmarkManagerGetAndLookup(b *testing.B) {
 	if err != nil {
 		b.Fatal(err)
 	}
+
 	if _, err := mgr.Load(b.Context()); err != nil {
 		b.Fatal(err)
 	}
 
 	b.ReportAllocs()
+
 	for b.Loop() {
 		p, ok := mgr.Get("bench")
 		if !ok {
 			b.Fatal("missing bench plugin")
 		}
+
 		if _, ok := p.Lookup("Provider"); !ok {
 			b.Fatal("missing Provider symbol")
 		}

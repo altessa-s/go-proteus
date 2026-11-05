@@ -52,6 +52,7 @@ func PAE(payloadType string, payload []byte) []byte {
 	buf = append(buf, pLen...)
 	buf = append(buf, ' ')
 	buf = append(buf, payload...)
+
 	return buf
 }
 
@@ -60,10 +61,12 @@ func MarshalEnvelope(env Envelope) ([]byte, error) {
 	if err := validateEnvelope(env); err != nil {
 		return nil, err
 	}
+
 	data, err := json.Marshal(env, json.Deterministic(true))
 	if err != nil {
 		return nil, fmt.Errorf("%w: marshal envelope: %w", proteus.ErrSignatureInvalid, err)
 	}
+
 	return data, nil
 }
 
@@ -71,6 +74,7 @@ func MarshalEnvelope(env Envelope) ([]byte, error) {
 // (rejecting unknown members and duplicate member names).
 func UnmarshalEnvelope(raw []byte) (Envelope, error) {
 	var env Envelope
+
 	err := json.Unmarshal(
 		raw,
 		&env,
@@ -80,9 +84,11 @@ func UnmarshalEnvelope(raw []byte) (Envelope, error) {
 	if err != nil {
 		return Envelope{}, fmt.Errorf("%w: decode DSSE envelope: %w", proteus.ErrSignatureInvalid, err)
 	}
+
 	if err := validateEnvelope(env); err != nil {
 		return Envelope{}, err
 	}
+
 	return env, nil
 }
 
@@ -90,19 +96,24 @@ func validateEnvelope(env Envelope) error {
 	if env.PayloadType != proteus.ManifestPayloadType {
 		return fmt.Errorf("%w: unexpected payloadType %q", proteus.ErrSignatureInvalid, env.PayloadType)
 	}
+
 	if env.Payload == "" {
 		return fmt.Errorf("%w: empty DSSE payload", proteus.ErrSignatureInvalid)
 	}
+
 	if len(env.Signatures) == 0 {
 		return fmt.Errorf("%w: DSSE envelope contains no signatures", proteus.ErrSignatureInvalid)
 	}
+
 	for i, s := range env.Signatures {
 		if s.KeyID == "" {
 			return fmt.Errorf("%w: signature[%d] has empty keyid", proteus.ErrSignatureInvalid, i)
 		}
+
 		if s.Sig == "" {
 			return fmt.Errorf("%w: signature[%d] has empty sig", proteus.ErrSignatureInvalid, i)
 		}
 	}
+
 	return nil
 }

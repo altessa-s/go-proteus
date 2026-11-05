@@ -33,6 +33,7 @@ func (c *handleCache) getOrOpen(ctx context.Context, digest string, fn func() (p
 	c.mu.Lock()
 	if entry, ok := c.entries[digest]; ok {
 		c.mu.Unlock()
+
 		select {
 		case <-ctx.Done():
 			return nil, false, ctx.Err()
@@ -40,6 +41,7 @@ func (c *handleCache) getOrOpen(ctx context.Context, digest string, fn func() (p
 			return entry.symbols, entry.terminal, entry.err
 		}
 	}
+
 	entry := &cacheEntry{done: make(chan struct{})}
 	c.entries[digest] = entry
 	c.mu.Unlock()
@@ -53,8 +55,10 @@ func (c *handleCache) getOrOpen(ctx context.Context, digest string, fn func() (p
 				entry.terminal = true
 				entry.err = fmt.Errorf("%w: plugin loader exited without returning", proteus.ErrPanicked)
 			}
+
 			close(entry.done)
 		}()
+
 		entry.symbols, entry.terminal, entry.err = fn()
 		returned = true
 	}()
@@ -65,5 +69,6 @@ func (c *handleCache) getOrOpen(ctx context.Context, digest string, fn func() (p
 		delete(c.entries, digest)
 	}
 	c.mu.Unlock()
+
 	return entry.symbols, entry.terminal, entry.err
 }

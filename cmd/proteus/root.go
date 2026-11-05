@@ -39,5 +39,6 @@ func newRootCmd() *cobra.Command {
 		newVerifyCmd(),
 		newInspectCmd(),
 	)
+
 	return root
 }
