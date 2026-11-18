@@ -179,44 +179,9 @@ func WriteFileAtomic(path string, data []byte, perm fs.FileMode) error {
 		return fmt.Errorf("signing: create parent directory %q: %w", dir, err)
 	}
 
-	tmp, err := os.CreateTemp(dir, ".proteus-atomic-*")
-	if err != nil {
-		return fmt.Errorf("signing: create temp file in %q: %w", dir, err)
+	if err := files.WriteFileAtomic(cleaned, data, perm); err != nil {
+		return fmt.Errorf("signing: %w", err)
 	}
-
-	tmpPath := tmp.Name()
-
-	cleanup := true
-	defer func() {
-		if cleanup {
-			_ = os.Remove(tmpPath)
-		}
-	}()
-
-	if err := tmp.Chmod(perm); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("signing: chmod temp file: %w", err)
-	}
-
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("signing: write temp file: %w", err)
-	}
-
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
-		return fmt.Errorf("signing: sync temp file: %w", err)
-	}
-
-	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("signing: close temp file: %w", err)
-	}
-
-	if err := os.Rename(tmpPath, cleaned); err != nil {
-		return fmt.Errorf("signing: rename temp file to %q: %w", cleaned, err)
-	}
-
-	cleanup = false
 
 	return nil
 }

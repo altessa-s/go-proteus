@@ -22,6 +22,10 @@ import (
 	"testing/synctest"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
+	"github.com/altessa-s/go-atlas-core/semver"
+
 	"github.com/altessa-s/go-proteus"
 	"github.com/altessa-s/go-proteus/host"
 	"github.com/altessa-s/go-proteus/sdk"
@@ -1065,5 +1069,15 @@ func TestSignedErrorPathsAndVersionCompare(t *testing.T) {
 
 	for range mgr.LookupAll(sdk.SymbolDescriptor) {
 		break
+	}
+}
+
+func TestHostVersionParseErrors(t *testing.T) {
+	t.Parallel()
+
+	const overflow = "18446744073709551616"
+	for _, raw := range []string{"1.2", overflow + ".0.0", "0." + overflow + ".0", "0.0." + overflow} {
+		_, err := host.New(&memSource{}, newFakeOpener(), host.WithUnsigned(proteus.UnsignedAllow), host.WithHostVersion(raw))
+		require.ErrorIs(t, err, semver.ErrInvalid, raw)
 	}
 }

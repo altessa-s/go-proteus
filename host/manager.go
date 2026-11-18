@@ -44,7 +44,7 @@ type Manager struct {
 	hasHostMajor      bool
 	hostMajor         int
 	hostVersionPolicy proteus.VersionPolicy
-	minVersions       map[string]semver
+	minVersions       map[string]version
 	minVersionPolicy  proteus.VersionPolicy
 	initTimeout       time.Duration
 	closeTimeout      time.Duration
@@ -104,7 +104,7 @@ func New(source proteus.Source, opener proteus.Opener, opts ...Option) (*Manager
 		hostMajor = sv.major
 	}
 
-	minVers := make(map[string]semver, len(cfg.minVersions))
+	minVers := make(map[string]version, len(cfg.minVersions))
 	for name, rawVer := range cfg.minVersions {
 		sv, err := parseSemver(rawVer)
 		if err != nil {

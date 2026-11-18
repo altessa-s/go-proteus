@@ -649,18 +649,18 @@ func (m *Manager) checkMinVersion(pluginName, rawPluginVer string) error {
 		return vErr
 	}
 
-	if parsedPluginVer.compare(minVer) >= 0 {
+	if parsedPluginVer.Compare(minVer.Version) >= 0 {
 		return nil
 	}
 
 	vErr := fmt.Errorf(
-		"%w: plugin %q version %s is below minimum %d.%d.%d",
+		"%w: plugin %q version %s is below minimum %s.%s.%s",
 		proteus.ErrBelowMinVersion,
 		pluginName,
 		rawPluginVer,
-		minVer.major,
-		minVer.minor,
-		minVer.patch,
+		minVer.Major,
+		minVer.Minor,
+		minVer.Patch,
 	)
 	if m.minVersionPolicy == proteus.VersionWarn {
 		m.logger.Warn("plugin version is below configured minimum floor (allowed by policy)",
