@@ -16,6 +16,8 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/require"
+
 	"github.com/altessa-s/go-proteus"
 	"github.com/altessa-s/go-proteus/signature"
 	"github.com/altessa-s/go-proteus/signing"
@@ -185,4 +187,17 @@ func TestGenerateParseSignAndVerify_D6_D22(t *testing.T) {
 	if _, _, err := signing.SignFile(validSO, "", "1.0.0", nil, signing.WithNotAfter(time.Now().Add(time.Hour))); !errors.Is(err, proteus.ErrManifestInvalid) {
 		t.Fatalf("expected ErrManifestInvalid for empty plugin name, got %v", err)
 	}
+}
+
+func TestWriteFileAtomicRenameError(t *testing.T) {
+	t.Parallel()
+
+	path := filepath.Join(t.TempDir(), "existing")
+	require.NoError(t, os.Mkdir(path, 0o700))
+
+	err := signing.WriteFileAtomic(path, []byte("data"), 0)
+	require.ErrorContains(t, err, "signing: failed to write file atomically on "+path)
+
+	var renameErr *os.LinkError
+	require.ErrorAs(t, err, &renameErr)
 }

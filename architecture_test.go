@@ -42,6 +42,7 @@ var layers = map[string]layerRule{
 	},
 	"host": {
 		internal: []string{".", "sdk"},
+		external: []string{"github.com/altessa-s/go-atlas-core/semver"},
 	},
 	"spi": {
 		internal: []string{".", "sdk"},
